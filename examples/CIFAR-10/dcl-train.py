@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 from optuna.storages import JournalFileStorage, JournalStorage
 from optuna.study import MaxTrialsCallback
-from optuna.trial import TrialState
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
@@ -15,8 +14,7 @@ from ktg import KnowledgeTransferGraph, Node, build_edges, gates
 from ktg.dataset.cifar_datasets.cifar10 import get_datasets
 from ktg.losses import KLDivLoss
 from ktg.models import cifar_models
-from ktg.utils import (AverageMeter, WorkerInitializer, load_checkpoint,
-                       set_seed)
+from ktg.utils import AverageMeter, WorkerInitializer, load_checkpoint, set_seed
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--seed", default=42)
@@ -174,7 +172,7 @@ if __name__ == "__main__":
         callbacks=[
             MaxTrialsCallback(
                 n_trials,
-                states=(TrialState.COMPLETE, TrialState.PRUNED, TrialState.FAIL),
+                states=None,
             )
         ],
     )
