@@ -6,6 +6,8 @@ import optuna
 import torch
 import torch.nn as nn
 from optuna.storages import JournalFileStorage, JournalStorage
+from optuna.study import MaxTrialsCallback
+from optuna.trial import TrialState
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
@@ -166,4 +168,13 @@ if __name__ == "__main__":
         load_if_exists=True,
     )
     # Start optimization
-    study.optimize(objective, n_trials=n_trials)
+    study.optimize(
+        objective,
+        n_trials=n_trials,
+        callbacks=[
+            MaxTrialsCallback(
+                n_trials,
+                states=(TrialState.COMPLETE, TrialState.PRUNED, TrialState.FAIL),
+            )
+        ],
+    )
