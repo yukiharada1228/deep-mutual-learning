@@ -12,13 +12,6 @@ This repository implements the "Knowledge Transfer Graph for Deep Collaborative 
 ## Replace CorrectGate with NegativeLinearGate
 The original CorrectGate was replaced by NegativeLinearGate in the implementation. This change was made to specifically enhance the model's performance in controlling knowledge transfer along the temporal dimension, with the aim of improving overall accuracy.
 
-## Self-Supervised Collaborative Learning
-At this time, the only fully implemented Self-Supervised Collaborative Learning (SSCL) method in this repository is SimCLR.
-
-- SimCLR implementation and examples: [examples/CIFAR-10/SimCLR](examples/CIFAR-10/SimCLR)
-
-Support for other methods such as MoCo, SimSiam, BYOL, Barlow Twins, SwAV, and DINO is planned.
-
 ## Usage
 To use the Knowledge Transfer Graph in your project, follow these steps:
 1. Clone the repository:

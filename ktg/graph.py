@@ -116,20 +116,7 @@ class KnowledgeTransferGraph:
         self.data_length = len(self.train_dataloader)
 
     def train_on_batch(self, image, label, epoch, num_iter):
-        if type(image) == list:
-            if len(image) == 2:
-                image = [img.cuda() for img in image]
-                image.append(None)
-            elif len(image) == 3:
-                image = [
-                    image[0].cuda(),
-                    image[1].cuda(),
-                    [img.cuda() for img in image[2]],
-                ]
-            else:
-                raise Exception("Invalid image list length. Expected length 2 or 3.")
-        else:
-            image = image.cuda()
+        image = image.cuda()
         label = label.cuda()
 
         outputs = []
@@ -137,10 +124,7 @@ class KnowledgeTransferGraph:
         for node in self.nodes:
             node.model.train()
             with torch.cuda.amp.autocast():
-                if type(image) == list:
-                    y = node.model(image[0], image[1], image[2])
-                else:
-                    y = node.model(image)
+                y = node.model(image)
             outputs.append(y)
             labels.append(label)
 
@@ -152,29 +136,27 @@ class KnowledgeTransferGraph:
                     node.scaler.step(node.optimizer)
                     node.optimizer.zero_grad()
                     node.scaler.update()
-            if type(image) == torch.Tensor:
-                [top1] = node.eval(outputs[model_id], labels[model_id], topk=(1,))
-                node.score_meter.update(top1.item(), labels[model_id].size(0))
+            [top1] = node.eval(outputs[model_id], labels[model_id], topk=(1,))
+            node.score_meter.update(top1.item(), labels[model_id].size(0))
             node.loss_meter.update(loss.item(), labels[model_id].size(0))
 
     def test_on_batch(self, image, label):
-        if type(image) == torch.Tensor:
-            image = image.cuda()
-            label = label.cuda()
+        image = image.cuda()
+        label = label.cuda()
 
-            outputs = []
-            labels = []
-            for node in self.nodes:
-                node.model.eval()
-                with torch.cuda.amp.autocast():
-                    with torch.no_grad():
-                        y = node.model(image)
-                outputs.append(y)
-                labels.append(label)
+        outputs = []
+        labels = []
+        for node in self.nodes:
+            node.model.eval()
+            with torch.cuda.amp.autocast():
+                with torch.no_grad():
+                    y = node.model(image)
+            outputs.append(y)
+            labels.append(label)
 
-            for model_id, node in enumerate(self.nodes):
-                [top1] = node.eval(outputs[model_id], labels[model_id], topk=(1,))
-                node.score_meter.update(top1.item(), labels[model_id].size(0))
+        for model_id, node in enumerate(self.nodes):
+            [top1] = node.eval(outputs[model_id], labels[model_id], topk=(1,))
+            node.score_meter.update(top1.item(), labels[model_id].size(0))
 
     def train(self):
         for epoch in range(1, self.max_epoch + 1):
@@ -205,8 +187,6 @@ class KnowledgeTransferGraph:
             for image, label in self.test_dataloader:
                 self.test_on_batch(image=image, label=label)
             for model_id, node in enumerate(self.nodes):
-                if node.score_meter.avg == 0.0:
-                    node.score_meter.avg = node.eval()
                 test_score = node.score_meter.avg
                 node.writer.add_scalar("test_score", test_score, epoch)
                 print(
