@@ -128,7 +128,7 @@ def objective(trial):
         node = Node(
             model=model,
             writer=writer,
-            scaler=torch.cuda.amp.GradScaler(),
+            scaler=torch.amp.GradScaler('cuda'),
             optimizer=optimizer,
             scheduler=scheduler,
             edges=edges,

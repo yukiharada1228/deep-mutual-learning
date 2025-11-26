@@ -171,7 +171,7 @@ def main():
         node = Node(
             model=model,
             writer=writer,
-            scaler=torch.cuda.amp.GradScaler(),
+            scaler=torch.amp.GradScaler('cuda'),
             save_dir=save_dir,
             optimizer=optimizer,
             scheduler=scheduler,

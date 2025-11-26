@@ -80,7 +80,7 @@ class TotalLoss(nn.Module):
 class Node:
     model: nn.Module
     writer: SummaryWriter
-    scaler: torch.cuda.amp.GradScaler
+    scaler: torch.amp.GradScaler
     optimizer: Optimizer
     edges: list[Edge]
     total_loss: TotalLoss = field(init=False)
