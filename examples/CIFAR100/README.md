@@ -1,6 +1,6 @@
 ## CIFAR-100 Experiment Notes (KTG)
 
-This directory contains the complete set of experiments for KTG (Knowledge Transfer Graph) on CIFAR-100. Use `dcl-train.py` for the search, `test/dcl-test.py` and `test/dml-test.py` for retraining and evaluation, and `pre-train.py` for pre-training single models.
+This directory contains the complete set of experiments for KTG (Knowledge Transfer Graph) on CIFAR-100. Use `dcl_train.py` for the search, `test/dcl_test.py` and `test/dml_test.py` for retraining and evaluation, and `pre_train.py` for pre-training single models.
 
 ### Highlights (TL;DR) — Focus on Node0 `resnet32`
 - **pre-train (test)**: 71.55%
@@ -57,7 +57,7 @@ This directory contains the complete set of experiments for KTG (Knowledge Trans
 
 ### Retraining + test results (train+val → test)
 
-#### dcl-test.py (retraining with the best trial)
+#### dcl_test.py (retraining with the best trial)
 - Log: `examples/CIFAR-100/test/runs/dcl_3/0011/`
 - Checkpoints: `examples/CIFAR-100/test/checkpoint/dcl_3/0011/`
 
@@ -67,9 +67,9 @@ This directory contains the complete set of experiments for KTG (Knowledge Trans
 | 1 | resnet32  | 72.92 | 200 |
 | 2 | resnet110 | 75.60 | 200 |
 
-> Note: `dcl-test.py` reconstructs the graph with the best-trial configuration and evaluates on the `test` set.
+> Note: `dcl_test.py` reconstructs the graph with the best-trial configuration and evaluates on the `test` set.
 
-#### dml-test.py (all edges ThroughGate)
+#### dml_test.py (all edges ThroughGate)
 - Log: `examples/CIFAR-100/test/runs/dml_3/0011/`
 - Checkpoints: `examples/CIFAR-100/test/checkpoint/dml_3/0011/`
 
@@ -81,7 +81,7 @@ This directory contains the complete set of experiments for KTG (Knowledge Trans
 
 > Note: This evaluates the DML configuration where all edges are fixed to `ThroughGate`.
 
-### Single model test results (pre-train.py, train+val → test)
+### Single model test results (pre_train.py, train+val → test)
 - Log: `examples/CIFAR-100/test/runs/pre-train/`
 - Checkpoints: `examples/CIFAR-100/test/checkpoint/pre-train/{model}/`
 
@@ -95,15 +95,15 @@ This directory contains the complete set of experiments for KTG (Knowledge Trans
 1) Pre-train (optional)
 ```bash
 cd examples/CIFAR-100
-python pre-train.py --model resnet32
-python pre-train.py --model resnet110
-python pre-train.py --model wideresnet28_2
+python pre_train.py --model resnet32
+python pre_train.py --model resnet110
+python pre_train.py --model wideresnet28_2
 ```
 
 2) Search with Optuna (DCL)
 ```bash
 cd examples/CIFAR-100
-python dcl-train.py --num-nodes 3 --n_trials 100 \
+python dcl_train.py --num-nodes 3 --n_trials 100 \
   --models resnet32 resnet110 wideresnet28_2 \
   --gates ThroughGate CutoffGate PositiveLinearGate NegativeLinearGate
 ```
@@ -111,7 +111,7 @@ python dcl-train.py --num-nodes 3 --n_trials 100 \
 3) Retraining + evaluation with the best trial (test-operation mode)
 ```bash
 cd examples/CIFAR-100/test
-python dcl-test.py --num-nodes 3 --trial 11
+python dcl_test.py --num-nodes 3 --trial 11
 # If omitted, the study's best_trial is used by default
 ```
 

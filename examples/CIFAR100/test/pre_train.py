@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from ktg import KnowledgeTransferGraph, Node, build_edges
-from ktg.dataset.cifar_datasets.cifar10 import get_datasets
+from ktg.dataset.cifar_datasets.cifar100 import get_datasets
 from ktg.gates import ThroughGate
 from ktg.models import cifar_models
 from ktg.utils import AverageMeter, WorkerInitializer, set_seed
@@ -27,11 +27,11 @@ wd = float(args.wd)
 # Fix the seed value
 set_seed(manualSeed)
 
-# Prepare the CIFAR-10 for training
+# Prepare the CIFAR-100 for training
 batch_size = 64
 num_workers = 10
 
-train_dataset, val_dataset = get_datasets()
+train_dataset, test_dataset = get_datasets(use_test_mode=True)
 
 train_dataloader = DataLoader(
     train_dataset,
@@ -43,7 +43,7 @@ train_dataloader = DataLoader(
     worker_init_fn=WorkerInitializer(manualSeed).worker_init_fn,
 )
 val_dataloader = DataLoader(
-    val_dataset,
+    test_dataset,
     batch_size=batch_size,
     shuffle=False,
     num_workers=num_workers,
@@ -69,7 +69,7 @@ scheduler_setting = {
     "args": {"T_max": max_epoch, "eta_min": 0.0},
 }
 
-num_classes = 10
+num_classes = 100
 nodes = []
 
 gates_list = [ThroughGate(max_epoch)]
@@ -77,10 +77,10 @@ criterions = [nn.CrossEntropyLoss()]
 model = getattr(cifar_models, model_name)(num_classes).cuda()
 writer = SummaryWriter(f"runs/pre-train/{model_name}")
 save_dir = f"checkpoint/pre-train/{model_name}"
-optimizer = getattr(torch.optim, optim_setting["name"])(
+optimizer = getattr(torch.optim, str(optim_setting["name"]))(
     model.parameters(), **optim_setting["args"]
 )
-scheduler = getattr(torch.optim.lr_scheduler, scheduler_setting["name"])(
+scheduler = getattr(torch.optim.lr_scheduler, str(scheduler_setting["name"]))(
     optimizer, **scheduler_setting["args"]
 )
 edges = build_edges(criterions, gates_list)

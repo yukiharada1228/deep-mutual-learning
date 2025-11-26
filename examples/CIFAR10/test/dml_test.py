@@ -9,12 +9,12 @@ from optuna.storages import JournalFileStorage, JournalStorage
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from ktg import KnowledgeTransferGraph, Node, build_edges, gates
-from ktg.dataset.cifar_datasets.cifar100 import get_datasets
+from ktg import KnowledgeTransferGraph, Node, build_edges
+from ktg.dataset.cifar_datasets.cifar10 import get_datasets
+from ktg.gates import ThroughGate
 from ktg.losses import KLDivLoss
 from ktg.models import cifar_models
-from ktg.utils import (AverageMeter, WorkerInitializer, load_checkpoint,
-                       set_seed)
+from ktg.utils import AverageMeter, WorkerInitializer, load_checkpoint, set_seed
 
 
 def infer_model_names(
@@ -56,7 +56,7 @@ def main():
         "--study-name",
         type=str,
         default=None,
-        help="Optuna study 名。未指定時は dcl_{num_nodes} を使用",
+        help="Optuna study 名。未指定時は dml_{num_nodes} を使用",
     )
     parser.add_argument("--max-epoch", type=int, default=200)
     args = parser.parse_args()
@@ -113,7 +113,7 @@ def main():
     )
 
     max_epoch = int(args.max_epoch)
-    # 学習設定（dcl-train.py と同様）
+    # 学習設定（dml-train.py と同様）
     optim_setting = {
         "name": "SGD",
         "args": {"lr": 0.1, "momentum": 0.9, "weight_decay": 5e-4, "nesterov": True},
@@ -123,7 +123,7 @@ def main():
         "args": {"T_max": max_epoch, "eta_min": 0.0},
     }
 
-    num_classes = 100
+    num_classes = 10
     nodes: List[Node] = []
     # ノード構築
     for i in range(args.num_nodes):
@@ -140,10 +140,10 @@ def main():
                 raise RuntimeError(
                     f"trial {best_trial.number:04} に {i}_{j}_gate が見つかりません"
                 )
-            gate = getattr(gates, gate_name)(max_epoch)
+            gate = ThroughGate(max_epoch)
             gates_list.append(gate)
 
-        # dcl-train.py と同様のロジック
+        # dml-train.py と同様のロジック
         all_cutoff = all(g.__class__.__name__ == "CutoffGate" for g in gates_list)
 
         model_name = model_names[i]
@@ -155,10 +155,10 @@ def main():
             load_checkpoint(model=model, save_dir=pretrain_dir, is_best=True)
 
         writer = SummaryWriter(
-            f"runs/dcl_{args.num_nodes}/{best_trial.number:04}/{i}_{model_name}"
+            f"runs/dml_{args.num_nodes}/{best_trial.number:04}/{i}_{model_name}"
         )
         save_dir = (
-            f"checkpoint/dcl_{args.num_nodes}/{best_trial.number:04}/{i}_{model_name}"
+            f"checkpoint/dml_{args.num_nodes}/{best_trial.number:04}/{i}_{model_name}"
         )
 
         optimizer = getattr(torch.optim, optim_setting["name"])(
