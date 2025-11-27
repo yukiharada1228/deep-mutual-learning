@@ -1,6 +1,6 @@
 ## CIFAR-100 Experiment Notes (KTG)
 
-This directory contains the complete set of experiments for KTG (Knowledge Transfer Graph) on CIFAR-100. Use `dcl_train.py` for the search, `test/dcl_test.py` and `test/dml_test.py` for retraining and evaluation, and `pre_train.py` for pre-training single models.
+This directory contains the complete set of experiments for KTG (Knowledge Transfer Graph) on CIFAR-100. Use `dcl_train.py` for the search, `evaluation/dcl_test.py` and `evaluation/dml_test.py` for retraining and evaluation, and `pre_train.py` for pre-training single models.
 
 ### Highlights (TL;DR) — Focus on Node0 `resnet32`
 - **pre-train (test)**: 71.55%
@@ -58,8 +58,8 @@ This directory contains the complete set of experiments for KTG (Knowledge Trans
 ### Retraining + test results (train+val → test)
 
 #### dcl_test.py (retraining with the best trial)
-- Log: `examples/CIFAR-100/test/runs/dcl_3/0011/`
-- Checkpoints: `examples/CIFAR-100/test/checkpoint/dcl_3/0011/`
+- Log: `examples/CIFAR-100/evaluation/runs/dcl_3/0011/`
+- Checkpoints: `examples/CIFAR-100/evaluation/checkpoint/dcl_3/0011/`
 
 | Node | Model | Best Top-1(%) | Best Epoch |
 |---|---|---:|---:|
@@ -70,8 +70,8 @@ This directory contains the complete set of experiments for KTG (Knowledge Trans
 > Note: `dcl_test.py` reconstructs the graph with the best-trial configuration and evaluates on the `test` set.
 
 #### dml_test.py (all edges ThroughGate)
-- Log: `examples/CIFAR-100/test/runs/dml_3/0011/`
-- Checkpoints: `examples/CIFAR-100/test/checkpoint/dml_3/0011/`
+- Log: `examples/CIFAR-100/evaluation/runs/dml_3/0011/`
+- Checkpoints: `examples/CIFAR-100/evaluation/checkpoint/dml_3/0011/`
 
 | Node | Model | Best Top-1(%) | Best Epoch |
 |---|---|---:|---:|
@@ -82,8 +82,8 @@ This directory contains the complete set of experiments for KTG (Knowledge Trans
 > Note: This evaluates the DML configuration where all edges are fixed to `ThroughGate`.
 
 ### Single model test results (pre_train.py, train+val → test)
-- Log: `examples/CIFAR-100/test/runs/pre-train/`
-- Checkpoints: `examples/CIFAR-100/test/checkpoint/pre-train/{model}/`
+- Log: `examples/CIFAR-100/evaluation/runs/pre-train/`
+- Checkpoints: `examples/CIFAR-100/evaluation/checkpoint/pre-train/{model}/`
 
 | Model | Best Top-1(%) | Best Epoch |
 |---|---:|---:|
@@ -110,7 +110,7 @@ python dcl_train.py --num-nodes 3 --n_trials 100 \
 
 3) Retraining + evaluation with the best trial (test-operation mode)
 ```bash
-cd examples/CIFAR-100/test
+cd examples/CIFAR-100/evaluation
 python dcl_test.py --num-nodes 3 --trial 11
 # If omitted, the study's best_trial is used by default
 ```
