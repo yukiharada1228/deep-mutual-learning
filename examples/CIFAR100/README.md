@@ -3,9 +3,9 @@
 This directory contains the complete set of experiments for KTG (Knowledge Transfer Graph) on CIFAR-100. Use `dcl_train.py` for the search, `evaluation/dcl_test.py` and `evaluation/dml_test.py` for retraining and evaluation, and `pre_train.py` for pre-training single models.
 
 ### Highlights (TL;DR) — Focus on Node0 `resnet32`
-- **pre-train (test)**: 71.55%
-- **DML (test)**: 72.10% (+0.55pt vs pre-train)
-- **DCL (test)**: 73.54% (+1.99pt vs pre-train)
+- **pre-train (test)**: 71.44%
+- **DML (test)**: 72.97% (+1.53pt vs pre-train)
+- **DCL (test)**: 73.49% (+2.05pt vs pre-train)
 
 ### Table of Contents
 - Dataset and preprocessing
@@ -38,56 +38,61 @@ This directory contains the complete set of experiments for KTG (Knowledge Trans
 ### DCL search summary
 - Study: `dcl_3` (number of nodes = 3)
 - Log: `examples/CIFAR-100/optuna/dcl_3/optuna.log`
-- Best trial: **Trial 11**
-- Best score: **Top-1 72.12%** (estimated on `val`)
-- Trial outputs: `examples/CIFAR-100/runs/dcl_3/0011/`
+- Best trial: **Trial 1**
+- Best score: **Top-1 72.31%** (estimated on `val`)
+- Trial outputs: `examples/CIFAR-100/runs/dcl_3/0001/`
 - Number of trials: 100
 
-#### Best trial configuration (Trial 11)
-- Models (node0→2): `[resnet32, resnet32, resnet110]`
+#### Best trial configuration (Trial 1)
+- Models (node0→2): `[resnet32, resnet110, wideresnet28_2]`
 - Gate matrix (row = i node = receiver, column = j node = sender. Each cell controls transfer j→i)
 
 | i\j | 0 | 1 | 2 |
 |---|---|---|---|
-| 0 | PositiveLinearGate | PositiveLinearGate | PositiveLinearGate |
-| 1 | CutoffGate | NegativeLinearGate | ThroughGate |
-| 2 | ThroughGate | CutoffGate | ThroughGate |
+| 0 | PositiveLinearGate | ThroughGate | PositiveLinearGate |
+| 1 | PositiveLinearGate | NegativeLinearGate | NegativeLinearGate |
+| 2 | NegativeLinearGate | CutoffGate | NegativeLinearGate |
 
 > Note: In the code, the outer loop is `i` (receiver) and the inner loop is `j` (sender) (`{i}_{j}_gate`).
 
 ### Retraining + test results (train+val → test)
 
 #### dcl_test.py (retraining with the best trial)
-- Log: `examples/CIFAR-100/evaluation/runs/dcl_3/0011/`
-- Checkpoints: `examples/CIFAR-100/evaluation/checkpoint/dcl_3/0011/`
+- Log: `examples/CIFAR-100/evaluation/runs/dcl_3/{trial:04}/{node}_{model}/`
+  - Example: `examples/CIFAR-100/evaluation/runs/dcl_3/0001/0_resnet32/`
+- Checkpoints: `examples/CIFAR-100/evaluation/checkpoint/dcl_3/{trial:04}/{node}_{model}/`
+  - Example: `examples/CIFAR-100/evaluation/checkpoint/dcl_3/0001/0_resnet32/`
 
 | Node | Model | Best Top-1(%) | Best Epoch |
 |---|---|---:|---:|
-| 0 | resnet32  | 73.54 | 198 |
-| 1 | resnet32  | 72.92 | 200 |
-| 2 | resnet110 | 75.60 | 200 |
+| 0 | resnet32  | 73.49 | 200 |
+| 1 | resnet110 | 75.43 | 199 |
+| 2 | wideresnet28_2 | 77.09 | 197 |
 
 > Note: `dcl_test.py` reconstructs the graph with the best-trial configuration and evaluates on the `test` set.
 
 #### dml_test.py (all edges ThroughGate)
-- Log: `examples/CIFAR-100/evaluation/runs/dml_3/0011/`
-- Checkpoints: `examples/CIFAR-100/evaluation/checkpoint/dml_3/0011/`
+- Log: `examples/CIFAR-100/evaluation/runs/dml_3/{trial:04}/{node}_{model}/`
+  - Example: `examples/CIFAR-100/evaluation/runs/dml_3/0001/0_resnet32/`
+- Checkpoints: `examples/CIFAR-100/evaluation/checkpoint/dml_3/{trial:04}/{node}_{model}/`
+  - Example: `examples/CIFAR-100/evaluation/checkpoint/dml_3/0001/0_resnet32/`
 
 | Node | Model | Best Top-1(%) | Best Epoch |
 |---|---|---:|---:|
-| 0 | resnet32  | 72.10 | 200 |
-| 1 | resnet32  | 72.64 | 199 |
-| 2 | resnet110 | 74.96 | 200 |
+| 0 | resnet32  | 72.97 | 199 |
+| 1 | resnet110 | 76.80 | 199 |
+| 2 | wideresnet28_2 | 77.02 | 197 |
 
 > Note: This evaluates the DML configuration where all edges are fixed to `ThroughGate`.
 
 ### Single model test results (pre_train.py, train+val → test)
-- Log: `examples/CIFAR-100/evaluation/runs/pre-train/`
+- Log: `examples/CIFAR-100/evaluation/runs/pre-train/{model}/`
+  - Example: `examples/CIFAR-100/evaluation/runs/pre-train/resnet32/`
 - Checkpoints: `examples/CIFAR-100/evaluation/checkpoint/pre-train/{model}/`
 
 | Model | Best Top-1(%) | Best Epoch |
 |---|---:|---:|
-| resnet32 | 71.55 | 198 |
+| resnet32 | 71.44 | 197 |
 | resnet110 | 73.67 | 187 |
 | wideresnet28_2 | 75.56 | 198 |
 
@@ -111,7 +116,7 @@ python dcl_train.py --num-nodes 3 --n_trials 100 \
 3) Retraining + evaluation with the best trial (test-operation mode)
 ```bash
 cd examples/CIFAR-100/evaluation
-python dcl_test.py --num-nodes 3 --trial 11
+python dcl_test.py --num-nodes 3 --trial 1
 # If omitted, the study's best_trial is used by default
 ```
 
