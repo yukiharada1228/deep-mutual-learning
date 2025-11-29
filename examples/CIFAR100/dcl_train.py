@@ -18,8 +18,8 @@ from ktg.utils import AverageMeter, WorkerInitializer, load_checkpoint, set_seed
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--seed", default=42)
-parser.add_argument("--num-nodes", default=6)
-parser.add_argument("--n_trials", default=1500)
+parser.add_argument("--num-nodes", default=3)
+parser.add_argument("--n_trials", default=100)
 parser.add_argument(
     "--models",
     default=["resnet32", "resnet110", "wideresnet28_2"],

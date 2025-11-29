@@ -47,7 +47,7 @@ def infer_model_names(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--num-nodes", type=int, default=6)
+    parser.add_argument("--num-nodes", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--num-workers", type=int, default=10)
     parser.add_argument("--trial", type=int, default=None, help="固定したい試行番号")
