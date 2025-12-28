@@ -48,12 +48,11 @@ class Edge(nn.Module):
             else:
                 loss = self.criterion(target_output, source_output)
 
-            # Pass logits and label for CorrectGate
+            # Pass teacher logits and label for CorrectGate
             # These arguments are ignored by other gate functions
             return self.gate(
                 loss,
                 epoch,
-                student_logits=target_output,
                 teacher_logits=source_output,
                 label=label,
             )
