@@ -50,8 +50,7 @@ class CorrectGate(nn.Module):
         if student_logits is None or teacher_logits is None or label is None:
             return loss.mean()
 
-        # Determine if student and teacher predictions are correct
-        true_s = student_logits.argmax(dim=1) == label
+        # Determine if teacher predictions are correct
         true_t = teacher_logits.argmax(dim=1) == label
 
         # Paper definition: Use only samples where teacher is correct
