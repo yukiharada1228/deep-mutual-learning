@@ -21,7 +21,7 @@ def load_checkpoint(model, save_dir, epoch=1, is_best=False):
         path = os.path.join(save_dir, "best_checkpoint.pkl")
     else:
         path = os.path.join(save_dir, "checkpoint_epoch_%d.pkl" % epoch)
-    # PyTorch 2.6 以降の既定 (weights_only=True) により読み込みが失敗するため明示的に False を指定
+    # Explicitly set to False to avoid loading failure due to PyTorch 2.6+ default (weights_only=True)
     state = torch.load(path, map_location="cpu", weights_only=False)
     model.cpu()
     model.load_state_dict(state["model_pram"])

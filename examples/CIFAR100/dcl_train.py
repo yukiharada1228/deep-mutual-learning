@@ -12,7 +12,6 @@ from torch.utils.tensorboard import SummaryWriter
 
 from ktg import KnowledgeTransferGraph, Node, build_edges, gates
 from ktg.dataset.cifar_datasets.cifar100 import get_datasets
-from ktg.losses import KLDivLoss
 from ktg.models import cifar_models
 from ktg.utils import AverageMeter, WorkerInitializer, load_checkpoint, set_seed
 
@@ -28,7 +27,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--gates",
-    default=["ThroughGate", "CutoffGate", "PositiveLinearGate", "NegativeLinearGate"],
+    default=["ThroughGate", "CutoffGate", "LinearGate", "CorrectGate"],
     nargs="*",
     type=str,
 )
@@ -94,9 +93,9 @@ def objective(trial):
         criterions = []
         for j in range(num_nodes):
             if i == j:
-                criterions.append(nn.CrossEntropyLoss())
+                criterions.append(nn.CrossEntropyLoss(reduction="none"))
             else:
-                criterions.append(KLDivLoss())
+                criterions.append(nn.KLDivLoss(reduction="none"))
             gate_name = trial.suggest_categorical(
                 f"{i}_{j}_gate",
                 gates_name,

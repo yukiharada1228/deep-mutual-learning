@@ -13,7 +13,6 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from ktg import KnowledgeTransferGraph, Node, build_edges, gates
-from ktg.losses import KLDivLoss
 from ktg.models import cifar_models
 from ktg.dataset.cifar_datasets.cifar10 import get_datasets
 from ktg.utils import AverageMeter, WorkerInitializer, set_seed
@@ -55,13 +54,13 @@ for i in range(num_nodes):
     else:
         model = cifar_models.wideresnet28_2(num_classes).cuda()
     
-    # Define criterions
+    # Define criterions with reduction="none" for per-sample loss
     criterions = []
     for j in range(num_nodes):
         if i == j:
-            criterions.append(nn.CrossEntropyLoss())
+            criterions.append(nn.CrossEntropyLoss(reduction="none"))
         else:
-            criterions.append(KLDivLoss())
+            criterions.append(nn.KLDivLoss(reduction="none"))
     
     # Define gates: ThroughGate for all edges
     gates_list = [gates.ThroughGate(max_epoch) for _ in range(num_nodes)]
@@ -115,18 +114,18 @@ Use different gates to control knowledge transfer over time.
 
 # Define gates with temporal scheduling
 gates_list = [
-    gates.ThroughGate(max_epoch),           # Self-edge: always on
-    gates.PositiveLinearGate(max_epoch),    # Gradually increase transfer
-    gates.NegativeLinearGate(max_epoch),    # Gradually decrease transfer
+    gates.ThroughGate(max_epoch),    # Self-edge: always on
+    gates.LinearGate(max_epoch),     # Gradually increase transfer
+    gates.CorrectGate(max_epoch),    # Filter by teacher correctness
 ]
 
 edges = build_edges(criterions, gates_list)
 ```
 
 This configuration:
-- Always uses ground truth labels for training (self-edge)
-- Gradually increases knowledge transfer from model 1
-- Gradually decreases knowledge transfer from model 2
+- Always uses ground truth labels for training (self-edge with ThroughGate)
+- Gradually increases knowledge transfer from model 1 (LinearGate)
+- Filters knowledge transfer from model 2 based on teacher correctness (CorrectGate)
 
 ## Example 3: Optuna Hyperparameter Optimization
 
@@ -170,14 +169,14 @@ def objective(trial):
         criterions = []
         for j in range(num_nodes):
             if i == j:
-                criterions.append(nn.CrossEntropyLoss())
+                criterions.append(nn.CrossEntropyLoss(reduction="none"))
             else:
-                criterions.append(KLDivLoss())
-            
+                criterions.append(nn.KLDivLoss(reduction="none"))
+
             # Suggest gate type
             gate_name = trial.suggest_categorical(
                 f"{i}_{j}_gate",
-                ["ThroughGate", "CutoffGate", "PositiveLinearGate", "NegativeLinearGate"]
+                ["ThroughGate", "CutoffGate", "LinearGate", "CorrectGate"]
             )
             gate = getattr(gates, gate_name)(max_epoch)
             gates_list.append(gate)
@@ -313,28 +312,31 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class CustomDistillationLoss(nn.Module):
-    def __init__(self, alpha=0.5, T=4.0):
+    def __init__(self, T=4.0):
         super().__init__()
-        self.alpha = alpha
         self.T = T
-    
+        self.kl_div = nn.KLDivLoss(reduction='none')
+
     def forward(self, student_output, teacher_output):
-        # Soft targets
-        soft_loss = F.kl_div(
-            F.log_softmax(student_output / self.T, dim=1),
-            F.softmax(teacher_output.detach() / self.T, dim=1),
-            reduction='batchmean',
-        ) * (self.T ** 2)
-        
-        return soft_loss
+        # Soft targets with temperature scaling
+        student_log_prob = F.log_softmax(student_output / self.T, dim=1)
+        teacher_prob = F.softmax(teacher_output.detach() / self.T, dim=1)
+
+        # Compute KL divergence per sample
+        loss = self.kl_div(student_log_prob, teacher_prob)
+
+        # Sum over classes and scale by T^2
+        loss = loss.sum(dim=1) * (self.T ** 2)
+
+        return loss  # Shape: (batch_size,)
 
 # Use custom loss
 criterions = []
 for j in range(num_nodes):
     if i == j:
-        criterions.append(nn.CrossEntropyLoss())
+        criterions.append(nn.CrossEntropyLoss(reduction="none"))
     else:
-        criterions.append(CustomDistillationLoss(alpha=0.5, T=4.0))
+        criterions.append(CustomDistillationLoss(T=4.0))
 ```
 
 ## Example 7: Asymmetric Graph
@@ -353,9 +355,9 @@ for i in range(3):
     
     for j in range(3):
         if i == j:
-            criterions.append(nn.CrossEntropyLoss())
+            criterions.append(nn.CrossEntropyLoss(reduction="none"))
         else:
-            criterions.append(KLDivLoss())
+            criterions.append(nn.KLDivLoss(reduction="none"))
         
         if i == 0:
             # Model 0: receives from all
@@ -401,14 +403,18 @@ for i, node in enumerate(nodes):
 
 3. **Memory Management**: For large models, consider reducing batch size or using gradient accumulation.
 
-4. **Gate Selection**: 
+4. **Gate Selection**:
    - Use `ThroughGate` for stable knowledge transfer
-   - Use `PositiveLinearGate` when you want gradual knowledge transfer
-   - Use `NegativeLinearGate` to reduce transfer over time (useful for fine-tuning)
+   - Use `LinearGate` when you want gradual knowledge transfer that increases over time
+   - Use `CorrectGate` to filter samples based on teacher correctness (as proposed in the paper)
+   - Use `CutoffGate` to disable specific transfer paths
 
-5. **Temperature Scaling**: Adjust temperature in `KLDivLoss` based on your task:
-   - Lower temperature (T=1-2): Sharp distributions
-   - Higher temperature (T=4-8): Softer distributions
+5. **Loss Functions**: Always use `reduction="none"` for both CrossEntropyLoss and KLDivLoss:
+   ```python
+   nn.CrossEntropyLoss(reduction="none")
+   nn.KLDivLoss(reduction="none")
+   ```
+   Gates will handle the averaging after applying their respective weighting/filtering.
 
 6. **Optuna Pruning**: Use pruning to stop unpromising trials early and save computation.
 

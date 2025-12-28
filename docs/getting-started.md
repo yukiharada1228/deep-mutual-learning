@@ -74,7 +74,6 @@ Each model becomes a node in the graph. Define the loss functions and gates for 
 
 ```python
 from ktg import KnowledgeTransferGraph, Node, build_edges, gates
-from ktg.losses import KLDivLoss
 from ktg.models import cifar_models
 from ktg.utils import AverageMeter
 from torch.utils.tensorboard import SummaryWriter
@@ -93,20 +92,22 @@ for i in range(num_nodes):
         model = cifar_models.resnet110(num_classes).cuda()
     else:
         model = cifar_models.wideresnet28_2(num_classes).cuda()
-    
-    # Define criterions: CrossEntropyLoss for self, KLDivLoss for others
+
+    # Define criterions with reduction="none" for per-sample loss
+    # Gates will handle the averaging
     criterions = []
     for j in range(num_nodes):
         if i == j:
-            criterions.append(nn.CrossEntropyLoss())
+            criterions.append(nn.CrossEntropyLoss(reduction="none"))
         else:
-            criterions.append(KLDivLoss())
+            criterions.append(nn.KLDivLoss(reduction="none"))
     
     # Define gates for knowledge transfer
     gates_list = [
-        gates.ThroughGate(max_epoch),      # Always transfer
-        gates.CutoffGate(max_epoch),       # Never transfer
-        gates.PositiveLinearGate(max_epoch) # Gradually increase transfer
+        gates.ThroughGate(max_epoch),   # Always transfer
+        gates.CutoffGate(max_epoch),    # Never transfer
+        gates.LinearGate(max_epoch),    # Gradually increase transfer
+        gates.CorrectGate(max_epoch)    # Filter based on teacher correctness
     ]
     
     # Build edges
@@ -156,12 +157,32 @@ print(f"Best validation accuracy: {best_score:.2f}%")
 
 ## Understanding Gates
 
-Gates control when and how much knowledge is transferred between models:
+Gates control when and how much knowledge is transferred between models. All gates operate on per-sample losses (using `reduction="none"`) and return the averaged loss.
+
+### Available Gate Functions
 
 - **ThroughGate**: Always transfers knowledge (weight = 1.0)
+  ```python
+  loss_out = loss.mean()
+  ```
+
 - **CutoffGate**: Never transfers knowledge (weight = 0.0)
-- **PositiveLinearGate**: Gradually increases transfer from 0 to 1 over epochs
-- **NegativeLinearGate**: Gradually decreases transfer from 1 to 0 over epochs
+  ```python
+  loss_out = 0.0
+  ```
+
+- **LinearGate**: Gradually increases transfer from 0 to 1 over epochs
+  ```python
+  weight = current_epoch / (max_epoch - 1)
+  loss_out = (loss * weight).mean()
+  ```
+
+- **CorrectGate**: Filters samples based on teacher's prediction correctness (as described in the paper)
+  ```python
+  # Only transfer knowledge when teacher predicts correctly
+  mask = (teacher_correct) ? 1.0 : 0.0
+  loss_out = (loss * mask).mean()
+  ```
 
 ## Next Steps
 

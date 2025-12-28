@@ -73,7 +73,7 @@ num_classes = 100
 nodes = []
 
 gates_list = [ThroughGate(max_epoch)]
-criterions = [nn.CrossEntropyLoss()]
+criterions = [nn.CrossEntropyLoss(reduction="none")]
 model = getattr(cifar_models, model_name)(num_classes).cuda()
 writer = SummaryWriter(f"runs/pre-train/{model_name}")
 save_dir = f"checkpoint/pre-train/{model_name}"

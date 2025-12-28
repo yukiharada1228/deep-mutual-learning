@@ -74,13 +74,28 @@ class Edge(nn.Module):
     def __init__(self, criterion: nn.Module, gate: nn.Module):
         self.criterion = criterion
         self.gate = gate
-    
+
     def forward(self, target_output, label, source_output, epoch, is_self_edge):
         if is_self_edge:
             loss = self.criterion(target_output, label)
+            return self.gate(loss, epoch)
         else:
-            loss = self.criterion(target_output, source_output)
-        return self.gate(loss, epoch)
+            # For KLDivLoss, convert logits to proper format
+            if isinstance(self.criterion, nn.KLDivLoss):
+                target_log_prob = F.log_softmax(target_output, dim=-1)
+                source_prob = F.softmax(source_output.detach(), dim=-1)
+                loss = self.criterion(target_log_prob, source_prob)
+                # Sum over classes to get per-sample loss
+                loss = loss.sum(dim=-1)
+            else:
+                loss = self.criterion(target_output, source_output)
+
+            return self.gate(
+                loss, epoch,
+                student_logits=target_output,
+                teacher_logits=source_output,
+                label=label
+            )
 ```
 
 ### 4. TotalLoss
@@ -133,8 +148,10 @@ class TotalLoss(nn.Module):
    ```
 
 3. The total loss aggregates:
-   - Self-edge loss: CrossEntropyLoss with ground truth labels
+   - Self-edge loss: CrossEntropyLoss with ground truth labels (`reduction="none"`)
    - Transfer edge losses: KLDivLoss with other models' outputs (weighted by gates)
+   - All losses use `reduction="none"` for per-sample computation
+   - Gates apply per-sample filtering/weighting and return averaged loss
 
 ### Backward Pass
 
@@ -163,82 +180,93 @@ After each epoch:
 
 ## Gates
 
-Gates control the temporal dynamics of knowledge transfer. They take a loss value and current epoch, and return a weighted loss:
+Gates control the temporal dynamics of knowledge transfer. All gates receive per-sample losses (shape: `(batch_size,)`) and return a scalar loss.
 
 ### ThroughGate
 
 Always transfers knowledge:
 ```python
-def forward(self, loss, epoch):
-    return loss  # weight = 1.0
+def forward(self, loss, epoch, **kwargs):
+    return loss.mean()  # Simple average of all samples
 ```
 
 ### CutoffGate
 
 Never transfers knowledge:
 ```python
-def forward(self, loss, epoch):
-    return loss.detach() * 0.0  # weight = 0.0
+def forward(self, loss, epoch, **kwargs):
+    return torch.zeros_like(loss[0], requires_grad=True).sum()  # Returns 0
 ```
 
-### PositiveLinearGate
+### LinearGate
 
-Gradually increases transfer from 0 to 1:
+Gradually increases transfer from 0 to 1 over epochs:
 ```python
-def forward(self, loss, epoch):
+def forward(self, loss, epoch, **kwargs):
     loss_weight = epoch / (self.max_epoch - 1)
-    return loss * loss_weight
+    return (loss * loss_weight).mean()
 ```
 
-### NegativeLinearGate
+### CorrectGate
 
-Gradually decreases transfer from 1 to 0:
+Filters samples based on teacher's prediction correctness (as proposed in the paper):
 ```python
-def forward(self, loss, epoch):
-    loss_weight = (self.max_epoch - 1 - epoch) / (self.max_epoch - 1)
-    return loss * loss_weight
+def forward(self, loss, epoch, student_logits, teacher_logits, label, **kwargs):
+    # Determine correctness of predictions
+    true_s = student_logits.argmax(dim=1) == label
+    true_t = teacher_logits.argmax(dim=1) == label
+
+    # Create masks for each case
+    TT = ((true_t == 1) & (true_s == 1)).float()  # Both correct
+    TF = ((true_t == 1) & (true_s == 0)).float()  # Teacher correct, student wrong
+    FT = ((true_t == 0) & (true_s == 1)).float()  # Teacher wrong, student correct
+    FF = ((true_t == 0) & (true_s == 0)).float()  # Both wrong
+
+    # Paper definition: TT=1, TF=1, FT=0, FF=0
+    # Only transfer when teacher is correct
+    mask = 1 * TT + 1 * TF + 0 * FT + 0 * FF
+
+    return (loss * mask).mean()
 ```
 
 ## Loss Functions
 
 ### CrossEntropyLoss
 
-Standard classification loss for self-edges (training with ground truth labels).
+Standard classification loss for self-edges (training with ground truth labels):
+```python
+criterion = nn.CrossEntropyLoss(reduction="none")  # Per-sample loss
+```
 
 ### KLDivLoss
 
-Knowledge distillation loss for transfer edges. Uses temperature scaling:
-
+Knowledge distillation loss for transfer edges. Uses PyTorch's official implementation:
 ```python
-class KLDivLoss(nn.Module):
-    def __init__(self, T=1):
-        super(KLDivLoss, self).__init__()
-        self.T = T  # Temperature parameter
-        self.softmax = nn.Softmax(dim=-1)
-    
-    def forward(self, y_pred, y_gt):
-        y_pred_soft = self.softmax(y_pred / self.T)
-        y_gt_soft = self.softmax(y_gt.detach() / self.T)
-        return (self.T**2) * self.kl_divergence(y_pred_soft, y_gt_soft)
-    
-    def kl_divergence(self, student, teacher):
-        kl = teacher * torch.log((teacher / (student + 1e-10)) + 1e-10)
-        kl = kl.sum(dim=1)
-        return kl.mean()
+criterion = nn.KLDivLoss(reduction="none")  # Per-sample loss
 ```
 
-The `T^2` factor compensates for the gradient scaling introduced by temperature scaling.
+The Edge class handles the conversion of logits to the proper format:
+```python
+# In Edge.forward() for transfer edges:
+target_log_prob = F.log_softmax(target_output, dim=-1)  # Student
+source_prob = F.softmax(source_output.detach(), dim=-1)  # Teacher
+loss = criterion(target_log_prob, source_prob)  # Shape: (batch, classes)
+loss = loss.sum(dim=-1)  # Sum over classes → Shape: (batch,)
+```
+
+This ensures all losses have the same shape `(batch_size,)` for consistent gate processing.
 
 ## Graph Structure
 
 In a typical setup with N nodes:
 
 - Each node has N edges (one to each node, including itself)
-- The self-edge uses CrossEntropyLoss
-- Other edges use KLDivLoss for knowledge distillation
+- The self-edge uses `CrossEntropyLoss(reduction="none")`
+- Other edges use `KLDivLoss(reduction="none")` for knowledge distillation
 - Gates can be configured independently for each edge
+- All gates operate on per-sample losses and return averaged loss
 
-This creates a fully connected graph where each model can learn from all others.
+This creates a fully connected graph where each model can learn from all others. The use of `reduction="none"` allows gates (especially CorrectGate) to apply sample-wise filtering before averaging.
 
 ## Integration with Optuna
 
@@ -252,9 +280,12 @@ KTG supports hyperparameter optimization with Optuna:
 ```python
 def objective(trial):
     # Suggest hyperparameters
-    gate_name = trial.suggest_categorical("gate", ["ThroughGate", "CutoffGate"])
+    gate_name = trial.suggest_categorical(
+        "gate",
+        ["ThroughGate", "CutoffGate", "LinearGate", "CorrectGate"]
+    )
     model_name = trial.suggest_categorical("model", ["resnet32", "resnet110"])
-    
+
     # Create graph
     graph = KnowledgeTransferGraph(..., trial=trial)
     best_score = graph.train()

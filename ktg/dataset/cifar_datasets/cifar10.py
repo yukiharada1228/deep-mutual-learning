@@ -38,9 +38,9 @@ def get_datasets(use_test_mode: bool = False):
     subsets = random_split(dataset, lengths)
     train_subset, val_subset = subsets[0], subsets[1]
 
-    # 正規化統計:
-    # - 通常: 学習/検証は train の統計
-    # - テスト時運用(use_test_mode=True): 学習(=train+val)とテストは train+val の統計
+    # Normalization statistics:
+    # - Normal: train/validation use train statistics
+    # - Test mode (use_test_mode=True): train(=train+val) and test use train+val statistics
     mean_train, std_train = _compute_mean_std(train_subset)
     mean_all, std_all = _compute_mean_std(ConcatDataset([train_subset, val_subset]))
 
@@ -69,7 +69,7 @@ def get_datasets(use_test_mode: bool = False):
         test_dataset = datasets.CIFAR10(
             root="data", train=False, download=True, transform=test_transform
         )
-        # use_test_mode=True の場合は (train, test) のみ返す
+        # When use_test_mode=True, return only (train, test)
         return train_dataset, test_dataset
     else:
         train_transform = transforms.Compose(
@@ -88,5 +88,5 @@ def get_datasets(use_test_mode: bool = False):
         )
         train_dataset = CustomDataset(train_subset, transform=train_transform)
         val_dataset = CustomDataset(val_subset, transform=val_transform)
-        # 通常は (train, val) のみ返す
+        # Normally return only (train, val)
         return train_dataset, val_dataset

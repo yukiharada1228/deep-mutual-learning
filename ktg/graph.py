@@ -6,6 +6,7 @@ from typing import Optional
 import optuna
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
@@ -28,11 +29,34 @@ class Edge(nn.Module):
         epoch: int,
         is_self_edge: bool,
     ):
+        # Compute all losses per-sample (reduction='none')
+        # Gate functions will handle averaging
         if is_self_edge:
             loss = self.criterion(target_output, label)
+            # For self-edges, no additional information is needed for gate function
+            return self.gate(loss, epoch)
         else:
-            loss = self.criterion(target_output, source_output)
-        return self.gate(loss, epoch)
+            # Convert to proper format when using PyTorch's KLDivLoss
+            if isinstance(self.criterion, nn.KLDivLoss):
+                # KLDivLoss expects log-probabilities and probabilities
+                target_log_prob = F.log_softmax(target_output, dim=-1)
+                source_prob = F.softmax(source_output.detach(), dim=-1)
+                loss = self.criterion(target_log_prob, source_prob)
+                # With reduction="none", output shape is (batch_size, num_classes)
+                # Sum over class dimension to get per-sample loss (batch_size,)
+                loss = loss.sum(dim=-1)
+            else:
+                loss = self.criterion(target_output, source_output)
+
+            # Pass logits and label for CorrectGate
+            # These arguments are ignored by other gate functions
+            return self.gate(
+                loss,
+                epoch,
+                student_logits=target_output,
+                teacher_logits=source_output,
+                label=label,
+            )
 
 
 def build_edges(criterions: list[nn.Module], gates: list[nn.Module]) -> list[Edge]:
@@ -58,7 +82,7 @@ def build_edges(criterions: list[nn.Module], gates: list[nn.Module]) -> list[Edg
 class TotalLoss(nn.Module):
     def __init__(self, edges: list[Edge]):
         super(TotalLoss, self).__init__()
-        # 各入次数を表す Edge をまとめて保持
+        # Store all incoming edges
         self.incoming_edges = nn.ModuleList(edges)
 
     def forward(self, model_id, outputs, labels, epoch):

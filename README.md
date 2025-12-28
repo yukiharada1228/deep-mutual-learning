@@ -7,10 +7,14 @@
 
 # KnowledgeTransferGraph
 
-This repository implements the "Knowledge Transfer Graph for Deep Collaborative Learning" described in the [ACCV 2020 accepted paper](https://openaccess.thecvf.com/content/ACCV2020/html/Minami_Knowledge_Transfer_Graph_for_Deep_Collaborative_Learning_ACCV_2020_paper.html). Notably, this implementation deviates from the original paper in certain aspects related to hyperparameter tuning.
+This repository implements the "Knowledge Transfer Graph for Deep Collaborative Learning" described in the [ACCV 2020 accepted paper](https://openaccess.thecvf.com/content/ACCV2020/html/Minami_Knowledge_Transfer_Graph_for_Deep_Collaborative_Learning_ACCV_2020_paper.html). This implementation faithfully follows the original paper, including all four gate functions proposed in the paper.
 
-## Replace CorrectGate with NegativeLinearGate
-The original CorrectGate was replaced by NegativeLinearGate in the implementation. This change was made to specifically enhance the model's performance in controlling knowledge transfer along the temporal dimension, with the aim of improving overall accuracy.
+## Gate Functions
+The implementation includes the four gate functions as described in the original paper:
+- **ThroughGate**: Passes the loss without modification
+- **CutoffGate**: Blocks knowledge transfer by returning zero loss
+- **LinearGate**: Linearly increases the weight of the loss from 0 to 1 as training progresses
+- **CorrectGate**: Filters samples based on the correctness of teacher and student predictions, using only samples where the teacher made correct predictions
 
 ## Usage
 To use the Knowledge Transfer Graph in your project, follow these steps:
