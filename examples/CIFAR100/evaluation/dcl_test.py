@@ -11,7 +11,6 @@ from torch.utils.tensorboard import SummaryWriter
 
 from ktg import KnowledgeTransferGraph, Node, build_edges, gates
 from ktg.dataset.cifar_datasets.cifar100 import get_datasets
-from ktg.losses import KLDivLoss
 from ktg.models import cifar_models
 from ktg.utils import AverageMeter, WorkerInitializer, load_checkpoint, set_seed
 
@@ -20,11 +19,11 @@ def infer_model_names(
     best_trial: optuna.trial.FrozenTrial, num_nodes: int
 ) -> List[str]:
     """
-    Optuna の trial 情報から各ノードのモデル名を復元する。
+    Restore model names for each node from Optuna trial information.
     """
     model_names: List[Optional[str]] = [None] * num_nodes
 
-    # 1) params からの補完（ノード1以降）
+    # 1) Fill in from params (node 1 onwards)
     for i in range(1, num_nodes):
         if not model_names[i]:
             key = f"{i}_model"
@@ -32,14 +31,14 @@ def infer_model_names(
             if isinstance(val, str) and len(val) > 0:
                 model_names[i] = val
 
-    # 2) ノード0のフォールバック（学習既定: models[0] = resnet32）
+    # 2) Fallback for node 0 (training default: models[0] = resnet32)
     if not model_names[0]:
         model_names[0] = "resnet32"
 
     if any(m is None or len(m) == 0 for m in model_names):
         missing = [i for i, m in enumerate(model_names) if not m]
         raise RuntimeError(
-            f"モデル名を特定できませんでした。trial={best_trial.number}, 欠損ノード={missing}"
+            f"Could not identify model names. trial={best_trial.number}, missing nodes={missing}"
         )
     return [str(m) for m in model_names]
 
@@ -50,12 +49,12 @@ def main():
     parser.add_argument("--num-nodes", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--num-workers", type=int, default=10)
-    parser.add_argument("--trial", type=int, default=None, help="固定したい試行番号")
+    parser.add_argument("--trial", type=int, default=None, help="Trial number to fix")
     parser.add_argument(
         "--study-name",
         type=str,
         default=None,
-        help="Optuna study 名。未指定時は dcl_{num_nodes} を使用",
+        help="Optuna study name. If not specified, dcl_{num_nodes} is used",
     )
     parser.add_argument("--max-epoch", type=int, default=200)
     args = parser.parse_args()
@@ -70,27 +69,27 @@ def main():
     )
 
     if args.trial is not None:
-        # 指定 trial を利用（存在チェック）
+        # Use specified trial (existence check)
         frozen = None
         for t in study.trials:
             if t.number == args.trial:
                 frozen = t
                 break
         if frozen is None:
-            raise ValueError(f"指定の trial が見つかりません: {args.trial}")
+            raise ValueError(f"Specified trial not found: {args.trial}")
         best_trial = frozen
     else:
-        # best_trial を採用
+        # Use best trial
         if study.best_trial is None:
             raise RuntimeError(
-                "best_trial が見つかりませんでした。学習が未完了の可能性があります。"
+                "best_trial not found. Training may be incomplete."
             )
         best_trial = study.best_trial
 
     model_names = infer_model_names(best_trial, args.num_nodes)
 
-    # 常に再学習: ベスト試行の構成で Graph を再構築して train→test
-    # use_test_mode=True: train(=train+val) と test を取得
+    # Always retrain: Rebuild graph with best trial configuration and train→test
+    # use_test_mode=True: get train(=train+val) and test
     train_dataset, test_dataset = get_datasets(use_test_mode=True)
     train_loader = DataLoader(
         train_dataset,
@@ -112,7 +111,7 @@ def main():
     )
 
     max_epoch = int(args.max_epoch)
-    # 学習設定（dcl_train.py と同様）
+    # Training settings (same as dcl_train.py)
     optim_setting = {
         "name": "SGD",
         "args": {"lr": 0.1, "momentum": 0.9, "weight_decay": 5e-4, "nesterov": True},
@@ -124,31 +123,31 @@ def main():
 
     num_classes = 100
     nodes: List[Node] = []
-    # ノード構築
+    # Build nodes
     for i in range(args.num_nodes):
-        # ゲートと損失
+        # Gates and losses
         gates_list = []
         criterions = []
         for j in range(args.num_nodes):
             if i == j:
-                criterions.append(nn.CrossEntropyLoss())
+                criterions.append(nn.CrossEntropyLoss(reduction="none"))
             else:
-                criterions.append(KLDivLoss())
+                criterions.append(nn.KLDivLoss(reduction="none"))
             gate_name = best_trial.params.get(f"{i}_{j}_gate")
             if gate_name is None:
                 raise RuntimeError(
-                    f"trial {best_trial.number:04} に {i}_{j}_gate が見つかりません"
+                    f"Gate {i}_{j}_gate not found in trial {best_trial.number:04}"
                 )
             gate = getattr(gates, gate_name)(max_epoch)
             gates_list.append(gate)
 
-        # dcl_train.py と同様のロジック
+        # Same logic as dcl_train.py
         all_cutoff = all(g.__class__.__name__ == "CutoffGate" for g in gates_list)
 
         model_name = model_names[i]
         model = getattr(cifar_models, model_name)(num_classes).cuda()
 
-        # 事前学習チェックポイントの読み込み（全入力Cutoffかつ i!=0 の場合）
+        # Load pretrained checkpoint (when all inputs are Cutoff and i!=0)
         if all_cutoff and i != 0:
             pretrain_dir = os.path.join("checkpoint", "pre-train", model_name)
             load_checkpoint(model=model, save_dir=pretrain_dir, is_best=True)

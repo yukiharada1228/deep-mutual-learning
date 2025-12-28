@@ -151,7 +151,11 @@ def build_edges(
 
 **Example:**
 ```python
-criterions = [CrossEntropyLoss(), KLDivLoss(), KLDivLoss()]
+criterions = [
+    nn.CrossEntropyLoss(reduction="none"),
+    nn.KLDivLoss(reduction="none"),
+    nn.KLDivLoss(reduction="none")
+]
 gates = [ThroughGate(200), ThroughGate(200), CutoffGate(200)]
 edges = build_edges(criterions, gates)
 ```
@@ -160,7 +164,7 @@ edges = build_edges(criterions, gates)
 
 ## Gates
 
-All gates inherit from `nn.Module` and implement the same interface.
+All gates inherit from `nn.Module` and implement the same interface. Gates receive per-sample losses (shape: `(batch_size,)`) and return a scalar loss.
 
 ### ThroughGate
 
@@ -169,8 +173,10 @@ Always transfers knowledge (weight = 1.0).
 ```python
 class ThroughGate(nn.Module):
     def __init__(self, max_epoch: int)
-    def forward(self, loss: Tensor, epoch: int) -> Tensor
+    def forward(self, loss: Tensor, epoch: int, **kwargs) -> Tensor
 ```
+
+**Implementation:** Returns `loss.mean()` - simple average of all samples.
 
 ### CutoffGate
 
@@ -179,70 +185,102 @@ Never transfers knowledge (weight = 0.0).
 ```python
 class CutoffGate(nn.Module):
     def __init__(self, max_epoch: int)
-    def forward(self, loss: Tensor, epoch: int) -> Tensor
+    def forward(self, loss: Tensor, epoch: int, **kwargs) -> Tensor
 ```
 
-### PositiveLinearGate
+**Implementation:** Returns `torch.zeros_like(loss[0], requires_grad=True).sum()` - effectively zero.
+
+### LinearGate
 
 Gradually increases transfer from 0 to 1 over epochs.
 
 ```python
-class PositiveLinearGate(nn.Module):
+class LinearGate(nn.Module):
     def __init__(self, max_epoch: int)
-    def forward(self, loss: Tensor, epoch: int) -> Tensor
+    def forward(self, loss: Tensor, epoch: int, **kwargs) -> Tensor
 ```
 
 **Weight formula:** `weight = epoch / (max_epoch - 1)`
 
-### NegativeLinearGate
+**Implementation:** Returns `(loss * weight).mean()`
 
-Gradually decreases transfer from 1 to 0 over epochs.
+### CorrectGate
+
+Filters samples based on teacher's prediction correctness (as proposed in the original paper).
 
 ```python
-class NegativeLinearGate(nn.Module):
+class CorrectGate(nn.Module):
     def __init__(self, max_epoch: int)
-    def forward(self, loss: Tensor, epoch: int) -> Tensor
+    def forward(
+        self,
+        loss: Tensor,
+        epoch: int,
+        student_logits: Tensor,
+        teacher_logits: Tensor,
+        label: Tensor,
+        **kwargs
+    ) -> Tensor
 ```
 
-**Weight formula:** `weight = (max_epoch - 1 - epoch) / (max_epoch - 1)`
+**Parameters:**
+- `loss` (Tensor): Per-sample losses, shape `(batch_size,)`
+- `epoch` (int): Current epoch (0-indexed)
+- `student_logits` (Tensor): Student model's output logits
+- `teacher_logits` (Tensor): Teacher model's output logits
+- `label` (Tensor): Ground truth labels
+
+**Filtering logic:**
+- TT (Both correct): weight = 1.0
+- TF (Teacher correct, student wrong): weight = 1.0
+- FT (Teacher wrong, student correct): weight = 0.0
+- FF (Both wrong): weight = 0.0
+
+Only transfers knowledge when the teacher makes correct predictions.
+
+**Implementation:** Returns `(loss * mask).mean()` where mask is based on teacher correctness.
 
 ---
 
 ## Loss Functions
 
+KTG uses PyTorch's official loss functions with `reduction="none"` for per-sample loss computation.
+
+### CrossEntropyLoss
+
+Standard classification loss for self-edges (training with ground truth labels):
+
+```python
+criterion = nn.CrossEntropyLoss(reduction="none")
+```
+
+**Output shape:** `(batch_size,)` - per-sample loss
+
 ### KLDivLoss
 
-Knowledge distillation loss with temperature scaling.
+Knowledge distillation loss for transfer edges. Uses PyTorch's official implementation:
 
 ```python
-class KLDivLoss(nn.Module):
-    def __init__(self, T: float = 1.0)
-    def forward(self, y_pred: Tensor, y_gt: Tensor) -> Tensor
+criterion = nn.KLDivLoss(reduction="none")
 ```
 
-**Parameters:**
-- `T` (float): Temperature parameter (default: 1.0)
-
-**Formula:**
-```
-y_pred_soft = softmax(y_pred / T)
-y_gt_soft = softmax(y_gt.detach() / T)
-loss = T^2 * KL(y_gt_soft, y_pred_soft)
-```
-
-The `T^2` factor compensates for gradient scaling from temperature scaling. The KL divergence is computed as:
-```
-kl = teacher * log(teacher / (student + 1e-10) + 1e-10)
-loss = T^2 * mean(sum(kl, dim=1))
-```
-
-**Example:**
+**Important:** The Edge class automatically converts logits to the proper format:
 ```python
-from ktg.losses import KLDivLoss
+# Student output → log-probabilities
+target_log_prob = F.log_softmax(target_output, dim=-1)
 
-kl_loss = KLDivLoss(T=4.0)
-loss = kl_loss(student_output, teacher_output)
+# Teacher output → probabilities
+source_prob = F.softmax(source_output.detach(), dim=-1)
+
+# Compute loss
+loss = criterion(target_log_prob, source_prob)  # Shape: (batch, classes)
+
+# Sum over classes to get per-sample loss
+loss = loss.sum(dim=-1)  # Shape: (batch,)
 ```
+
+**Output shape:** `(batch_size,)` - per-sample loss (after summing over classes)
+
+This ensures all losses have consistent shape for gate processing.
 
 ---
 

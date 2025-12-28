@@ -25,7 +25,6 @@ Knowledge Transfer Graph is a framework for training multiple neural networks co
 
 ```python
 from ktg import KnowledgeTransferGraph, Node, build_edges, gates
-from ktg.losses import KLDivLoss
 from ktg.models import cifar_models
 from ktg.utils import AverageMeter
 from torch.utils.tensorboard import SummaryWriter
@@ -46,14 +45,14 @@ for i in range(num_nodes):
         model = cifar_models.resnet110(num_classes).cuda()
     else:
         model = cifar_models.wideresnet28_2(num_classes).cuda()
-    
-    # Define criterions
+
+    # Define criterions (using reduction="none" for gate functions)
     criterions = []
     for j in range(num_nodes):
         if i == j:
-            criterions.append(nn.CrossEntropyLoss())
+            criterions.append(nn.CrossEntropyLoss(reduction="none"))
         else:
-            criterions.append(KLDivLoss())
+            criterions.append(nn.KLDivLoss(reduction="none"))
     
     # Define gates
     gates_list = [gates.ThroughGate(max_epoch) for _ in range(num_nodes)]
