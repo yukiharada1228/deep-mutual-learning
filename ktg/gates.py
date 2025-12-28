@@ -51,6 +51,8 @@ class CorrectGate(nn.Module):
             return loss.mean()
 
         # Determine if teacher predictions are correct
+        # Compare teacher's predicted class (argmax) with ground truth label
+        # Result: boolean tensor where True = teacher correct, False = teacher wrong
         true_t = teacher_logits.argmax(dim=1) == label
 
         # Paper definition: Use only samples where teacher is correct
@@ -59,6 +61,7 @@ class CorrectGate(nn.Module):
         # FT (teacher wrong, student correct) = 0
         # FF (teacher wrong, student wrong) = 0
         # Therefore, mask = teacher correctness
+        # Convert boolean to float: True -> 1.0, False -> 0.0
         mask = true_t.float()
 
         # Apply mask and compute mean over valid samples only
