@@ -54,15 +54,13 @@ class CorrectGate(nn.Module):
         true_s = student_logits.argmax(dim=1) == label
         true_t = teacher_logits.argmax(dim=1) == label
 
-        # Create masks for each case
-        TT = (true_t & true_s).float()
-        TF = (true_t & ~true_s).float()
-        FT = (~true_t & true_s).float()
-        FF = (~true_t & ~true_s).float()
-
-        # Paper definition: TT=1, TF=1, FT=0, FF=0
-        # Use only samples where teacher is correct
-        mask = 1 * TT + 1 * TF + 0 * FT + 0 * FF
+        # Paper definition: Use only samples where teacher is correct
+        # TT (teacher correct, student correct) = 1
+        # TF (teacher correct, student wrong) = 1
+        # FT (teacher wrong, student correct) = 0
+        # FF (teacher wrong, student wrong) = 0
+        # Therefore, mask = teacher correctness
+        mask = true_t.float()
 
         # Apply mask and compute mean over valid samples only
         # Add epsilon to avoid division by zero while preserving gradients
