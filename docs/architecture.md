@@ -6,26 +6,26 @@ This document explains the architecture and design principles of the Knowledge T
 
 Knowledge Transfer Graph (KTG) is a framework for training multiple neural networks collaboratively. The framework models knowledge transfer as a directed graph where:
 
-- **Nodes** represent neural network models
-- **Edges** represent knowledge transfer paths between models
+- **Learners** represent neural network models
+- **Links** represent knowledge transfer paths between models
 - **Gates** control the temporal dynamics of knowledge transfer
 
 ## Core Components
 
-### 1. KnowledgeTransferGraph
+### 1. DistillationTrainer
 
 The main class that orchestrates the training of multiple models. It manages:
 
-- Training loop across all nodes
+- Training loop across all learners
 - Batch processing and forward/backward passes
 - Evaluation and metric tracking
 - Integration with Optuna for hyperparameter optimization
 
 ```python
-class KnowledgeTransferGraph:
+class DistillationTrainer:
     def __init__(
         self,
-        nodes: list[Node],
+        learners: list[Learner],
         max_epoch: int,
         train_dataloader: DataLoader,
         test_dataloader: DataLoader,
@@ -33,12 +33,12 @@ class KnowledgeTransferGraph:
     )
 ```
 
-### 2. Node
+### 2. Learner
 
-A Node represents a single model in the graph. Each node contains:
+A Learner represents a single model in the distillation process. Each learner contains:
 
 - **model**: The neural network to train
-- **edges**: List of edges connecting to this node (incoming edges)
+- **links**: List of links connecting to this learner (incoming links)
 - **optimizer**: Optimizer for updating model parameters
 - **scheduler**: Learning rate scheduler
 - **writer**: TensorBoard writer for logging
@@ -48,12 +48,12 @@ A Node represents a single model in the graph. Each node contains:
 
 ```python
 @dataclass
-class Node:
+class Learner:
     model: nn.Module
     writer: SummaryWriter
     scaler: torch.amp.GradScaler
     optimizer: Optimizer
-    edges: list[Edge]
+    links: list[DistillationLink]
     loss_meter: AverageMeter
     score_meter: AverageMeter
     scheduler: LRScheduler = None
@@ -62,21 +62,21 @@ class Node:
     save_dir: Optional[str] = None
 ```
 
-### 3. Edge
+### 3. DistillationLink
 
-An Edge represents a knowledge transfer path. Each edge consists of:
+A DistillationLink represents a knowledge transfer path. Each link consists of:
 
 - **criterion**: Loss function for computing the transfer loss
 - **gate**: Gate module that controls the transfer weight over time
 
 ```python
-class Edge(nn.Module):
+class DistillationLink(nn.Module):
     def __init__(self, criterion: nn.Module, gate: nn.Module):
         self.criterion = criterion
         self.gate = gate
 
-    def forward(self, target_output, label, source_output, epoch, is_self_edge):
-        if is_self_edge:
+    def forward(self, target_output, label, source_output, epoch, is_self_link):
+        if is_self_link:
             loss = self.criterion(target_output, label)
             return self.gate(loss, epoch)
         else:
@@ -98,15 +98,15 @@ class Edge(nn.Module):
             )
 ```
 
-### 4. TotalLoss
+### 4. CompositeLoss
 
-Each node has a `TotalLoss` module that aggregates losses from all incoming edges. This is automatically created from the node's edges in `__post_init__`:
+Each learner has a `CompositeLoss` module that aggregates losses from all incoming links. This is automatically created from the learner's links in `__post_init__`:
 
 ```python
-class TotalLoss(nn.Module):
-    def __init__(self, edges: list[Edge]):
-        super(TotalLoss, self).__init__()
-        self.incoming_edges = nn.ModuleList(edges)
+class CompositeLoss(nn.Module):
+    def __init__(self, links: list[DistillationLink]):
+        super(CompositeLoss, self).__init__()
+        self.incoming_links = nn.ModuleList(links)
     
     def forward(self, model_id, outputs, labels, epoch):
         if model_id < 0 or model_id >= len(outputs):
@@ -114,13 +114,13 @@ class TotalLoss(nn.Module):
         losses = []
         target_output = outputs[model_id]
         label = labels[model_id]
-        for i, edge in enumerate(self.incoming_edges):
+        for i, link in enumerate(self.incoming_links):
             if i == model_id:
-                # Self-edge: use ground truth label
-                loss = edge(target_output, label, None, epoch, True)
+                # Self-link: use ground truth label
+                loss = link(target_output, label, None, epoch, True)
             else:
-                # Transfer edge: use source model output
-                loss = edge(target_output, None, outputs[i], epoch, False)
+                # Transfer link: use source model output
+                loss = link(target_output, None, outputs[i], epoch, False)
             losses.append(loss)
         return torch.stack(losses).sum()
 ```
@@ -133,23 +133,23 @@ class TotalLoss(nn.Module):
    ```python
    outputs = []
    labels = []
-   for node in self.nodes:
-       node.model.train()
+   for learner in self.learners:
+       learner.model.train()
        with torch.amp.autocast("cuda"):
-           y = node.model(image)
+           y = learner.model(image)
        outputs.append(y)
        labels.append(label)
    ```
 
-2. For each node, compute the total loss:
+2. For each learner, compute the composite loss:
    ```python
-   with torch.amp.autocast("cuda"):
-       loss = node.total_loss(model_id, outputs, labels, epoch)
+    with torch.amp.autocast("cuda"):
+        loss = learner.composite_loss(model_id, outputs, labels, epoch)
    ```
 
 3. The total loss aggregates:
-   - Self-edge loss: CrossEntropyLoss with ground truth labels (`reduction="none"`)
-   - Transfer edge losses: KLDivLoss with other models' outputs (weighted by gates)
+   - Self-link loss: CrossEntropyLoss with ground truth labels (`reduction="none"`)
+   - Transfer link losses: KLDivLoss with other models' outputs (weighted by gates)
    - All losses use `reduction="none"` for per-sample computation
    - Gates apply per-sample filtering/weighting and return averaged loss
 
@@ -233,21 +233,21 @@ def forward(self, loss, epoch, student_logits, teacher_logits, label, **kwargs):
 
 ### CrossEntropyLoss
 
-Standard classification loss for self-edges (training with ground truth labels):
+Standard classification loss for self-links (training with ground truth labels):
 ```python
 criterion = nn.CrossEntropyLoss(reduction="none")  # Per-sample loss
 ```
 
 ### KLDivLoss
 
-Knowledge distillation loss for transfer edges. Uses PyTorch's official implementation:
+Knowledge distillation loss for transfer links. Uses PyTorch's official implementation:
 ```python
 criterion = nn.KLDivLoss(reduction="none")  # Per-sample loss
 ```
 
-The Edge class handles the conversion of logits to the proper format:
+The DistillationLink class handles the conversion of logits to the proper format:
 ```python
-# In Edge.forward() for transfer edges:
+# In DistillationLink.forward() for transfer links:
 target_log_prob = F.log_softmax(target_output, dim=-1)  # Student
 source_prob = F.softmax(source_output.detach(), dim=-1)  # Teacher
 loss = criterion(target_log_prob, source_prob)  # Shape: (batch, classes)
@@ -260,10 +260,10 @@ This ensures all losses have the same shape `(batch_size,)` for consistent gate 
 
 In a typical setup with N nodes:
 
-- Each node has N edges (one to each node, including itself)
-- The self-edge uses `CrossEntropyLoss(reduction="none")`
-- Other edges use `KLDivLoss(reduction="none")` for knowledge distillation
-- Gates can be configured independently for each edge
+- Each learner has N links (one to each, including itself)
+- The self-link uses `CrossEntropyLoss(reduction="none")`
+- Other links use `KLDivLoss(reduction="none")` for knowledge distillation
+- Gates can be configured independently for each link
 - All gates operate on per-sample losses and return averaged loss
 
 This creates a fully connected graph where each model can learn from all others. The use of `reduction="none"` allows gates (especially CorrectGate) to apply sample-wise filtering before averaging.
@@ -272,7 +272,7 @@ This creates a fully connected graph where each model can learn from all others.
 
 KTG supports hyperparameter optimization with Optuna:
 
-1. Pass an Optuna `trial` object to `KnowledgeTransferGraph`
+1. Pass an Optuna `trial` object to `DistillationTrainer`
 2. Suggest hyperparameters in the objective function (gates, models, etc.)
 3. Report validation scores after each epoch
 4. Use pruning to stop unpromising trials early
@@ -286,9 +286,9 @@ def objective(trial):
     )
     model_name = trial.suggest_categorical("model", ["resnet32", "resnet110"])
 
-    # Create graph
-    graph = KnowledgeTransferGraph(..., trial=trial)
-    best_score = graph.train()
+    # Create trainer
+    trainer = DistillationTrainer(..., trial=trial)
+    best_score = trainer.train()
     return best_score
 ```
 

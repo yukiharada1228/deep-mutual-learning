@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide will help you get started with Knowledge Transfer Graph (KTG).
+This guide will help you get started with Deep Collaborative Learning (DCL).
 
 ## Installation
 
@@ -68,12 +68,12 @@ model2 = cifar_models.resnet110(num_classes).cuda()
 model3 = cifar_models.wideresnet28_2(num_classes).cuda()
 ```
 
-### Step 3: Create Nodes
+### Step 3: Create Learners
 
-Each model becomes a node in the graph. Define the loss functions and gates for knowledge transfer:
+Each model becomes a learner. Define the loss functions and gates for knowledge transfer:
 
 ```python
-from dcl import KnowledgeTransferGraph, Node, build_edges, gates
+from dcl import DistillationTrainer, Learner, build_links, gates
 from dcl.models import cifar_models
 from dcl.utils import AverageMeter
 from torch.utils.tensorboard import SummaryWriter
@@ -83,7 +83,7 @@ import torch.nn as nn
 max_epoch = 200
 num_nodes = 3
 
-nodes = []
+learners = []
 for i in range(num_nodes):
     # Select model
     if i == 0:
@@ -110,8 +110,8 @@ for i in range(num_nodes):
         gates.CorrectGate(max_epoch)    # Filter based on teacher correctness
     ]
     
-    # Build edges
-    edges = build_edges(criterions, gates_list)
+    # Build links
+    links = build_links(criterions, gates_list)
     
     # Create optimizer and scheduler
     optimizer = torch.optim.SGD(
@@ -125,33 +125,33 @@ for i in range(num_nodes):
         optimizer, T_max=max_epoch, eta_min=0.0
     )
     
-    # Create node
-    node = Node(
+    # Create learner
+    learner = Learner(
         model=model,
         writer=SummaryWriter(f"runs/node_{i}"),
         scaler=torch.amp.GradScaler("cuda"),
         optimizer=optimizer,
         scheduler=scheduler,
-        edges=edges,
+        links=links,
         loss_meter=AverageMeter(),
         score_meter=AverageMeter(),
     )
-    nodes.append(node)
+    learners.append(learner)
 ```
 
-### Step 4: Create and Train the Graph
+### Step 4: Create and Train
 
-Create the KnowledgeTransferGraph and start training:
+Create the DistillationTrainer and start training:
 
 ```python
-graph = KnowledgeTransferGraph(
-    nodes=nodes,
+trainer = DistillationTrainer(
+    learners=learners,
     max_epoch=max_epoch,
     train_dataloader=train_dataloader,
     test_dataloader=test_dataloader,
 )
 
-best_score = graph.train()
+best_score = trainer.train()
 print(f"Best validation accuracy: {best_score:.2f}%")
 ```
 

@@ -16,9 +16,9 @@ from dcl.gates import CutoffGate
 from dcl.utils import AverageMeter, accuracy, save_checkpoint
 
 
-class Edge(nn.Module):
+class DistillationLink(nn.Module):
     def __init__(self, criterion: nn.Module, gate: nn.Module):
-        super(Edge, self).__init__()
+        super(DistillationLink, self).__init__()
         self.criterion = criterion
         self.gate = gate
 
@@ -28,13 +28,13 @@ class Edge(nn.Module):
         label,
         source_output,
         epoch: int,
-        is_self_edge: bool,
+        is_self_link: bool,
     ):
         # Compute all losses per-sample (reduction='none')
         # Gate functions will handle averaging
-        if is_self_edge:
+        if is_self_link:
             loss = self.criterion(target_output, label)
-            # For self-edges, no additional information is needed for gate function
+            # For self-links, no additional information is needed for gate function
             return self.gate(loss, epoch)
         else:
             # Convert to proper format when using PyTorch's KLDivLoss
@@ -59,9 +59,9 @@ class Edge(nn.Module):
             )
 
 
-def build_edges(criterions: list[nn.Module], gates: list[nn.Module]) -> list[Edge]:
+def build_links(criterions: list[nn.Module], gates: list[nn.Module]) -> list[DistillationLink]:
     """
-    Build a list of Edge instances with simple length validation and one-sided broadcast.
+    Build a list of DistillationLink instances with simple length validation and one-sided broadcast.
 
     - If either `criterions` or `gates` has length 1 while the other has length N>1,
       it will be broadcast to length N.
@@ -76,14 +76,14 @@ def build_edges(criterions: list[nn.Module], gates: list[nn.Module]) -> list[Edg
             f"criterions({len(criterions)}) and gates({len(gates)}) must match in length "
             "or one of them must be length 1 for broadcasting"
         )
-    return [Edge(c, g) for c, g in zip(criterions, gates)]
+    return [DistillationLink(c, g) for c, g in zip(criterions, gates)]
 
 
-class TotalLoss(nn.Module):
-    def __init__(self, edges: list[Edge]):
-        super(TotalLoss, self).__init__()
-        # Store all incoming edges
-        self.incoming_edges = nn.ModuleList(edges)
+class CompositeLoss(nn.Module):
+    def __init__(self, links: list[DistillationLink]):
+        super(CompositeLoss, self).__init__()
+        # Store all incoming links
+        self.incoming_links = nn.ModuleList(links)
 
     def forward(self, model_id, outputs, labels, epoch):
         if model_id < 0 or model_id >= len(outputs):
@@ -96,17 +96,17 @@ class TotalLoss(nn.Module):
         target_output = outputs[model_id]
         label = labels[model_id]
 
-        for i, edge in enumerate(self.incoming_edges):
+        for i, link in enumerate(self.incoming_links):
             if i == model_id:
-                # Self-edge (supervised loss)
-                supervised_loss = edge(target_output, label, None, epoch, True)
+                # Self-link (supervised loss)
+                supervised_loss = link(target_output, label, None, epoch, True)
             else:
-                # Distillation edge
+                # Distillation link
                 # Check if the gate is CutoffGate
-                if not isinstance(edge.gate, CutoffGate):
+                if not isinstance(link.gate, CutoffGate):
                     valid_teacher_count += 1
 
-                dist_loss = edge(target_output, None, outputs[i], epoch, False)
+                dist_loss = link(target_output, None, outputs[i], epoch, False)
                 distillation_losses.append(dist_loss)
 
         # Sum of distillation losses
@@ -125,13 +125,13 @@ class TotalLoss(nn.Module):
 
 
 @dataclass
-class Node:
+class Learner:
     model: nn.Module
     writer: SummaryWriter
     scaler: torch.amp.GradScaler
     optimizer: Optimizer
-    edges: list[Edge]
-    total_loss: TotalLoss = field(init=False)
+    links: list[DistillationLink]
+    composite_loss: CompositeLoss = field(init=False)
     loss_meter: AverageMeter
     score_meter: AverageMeter
     scheduler: LRScheduler = None
@@ -140,23 +140,23 @@ class Node:
     save_dir: Optional[str] = None
 
     def __post_init__(self):
-        self.total_loss = TotalLoss(edges=self.edges)
+        self.composite_loss = CompositeLoss(links=self.links)
 
 
-class KnowledgeTransferGraph:
+class DistillationTrainer:
     def __init__(
         self,
-        nodes: list[Node],
+        learners: list[Learner],
         max_epoch: int,
         train_dataloader: DataLoader,
         test_dataloader: DataLoader,
         trial=None,
     ):
-        print("Welcome to KTG!!!")
-        self.nodes = nodes
-        for node in nodes:
-            if node.save_dir:
-                os.makedirs(node.save_dir, exist_ok=True)
+        print("Welcome to DCL!!!")
+        self.learners = learners
+        for learner in learners:
+            if learner.save_dir:
+                os.makedirs(learner.save_dir, exist_ok=True)
         self.max_epoch = max_epoch
         self.train_dataloader = train_dataloader
         self.test_dataloader = test_dataloader
@@ -169,32 +169,32 @@ class KnowledgeTransferGraph:
 
         outputs = []
         labels = []
-        for node in self.nodes:
-            # Check if all edges have CutoffGate
+        for learner in self.learners:
+            # Check if all links have CutoffGate
             # If so, use eval mode (for pre-trained teacher models)
-            all_cutoff = all(isinstance(edge.gate, CutoffGate) for edge in node.edges)
+            all_cutoff = all(isinstance(link.gate, CutoffGate) for link in learner.links)
             if all_cutoff:
-                node.model.eval()
+                learner.model.eval()
                 with torch.no_grad(), torch.amp.autocast("cuda"):
-                    y = node.model(image)
+                    y = learner.model(image)
             else:
-                node.model.train()
+                learner.model.train()
                 with torch.amp.autocast("cuda"):
-                    y = node.model(image)
+                    y = learner.model(image)
             outputs.append(y)
             labels.append(label)
 
-        for model_id, node in enumerate(self.nodes):
+        for model_id, learner in enumerate(self.learners):
             with torch.amp.autocast("cuda"):
-                loss = node.total_loss(model_id, outputs, labels, epoch)
-                if node.model.training:
-                    node.scaler.scale(loss).backward()
-                    node.scaler.step(node.optimizer)
-                    node.optimizer.zero_grad()
-                    node.scaler.update()
-            [top1] = node.eval(outputs[model_id], labels[model_id], topk=(1,))
-            node.score_meter.update(top1.item(), labels[model_id].size(0))
-            node.loss_meter.update(loss.item(), labels[model_id].size(0))
+                loss = learner.composite_loss(model_id, outputs, labels, epoch)
+                if learner.model.training:
+                    learner.scaler.scale(loss).backward()
+                    learner.scaler.step(learner.optimizer)
+                    learner.optimizer.zero_grad()
+                    learner.scaler.update()
+            [top1] = learner.eval(outputs[model_id], labels[model_id], topk=(1,))
+            learner.score_meter.update(top1.item(), labels[model_id].size(0))
+            learner.loss_meter.update(loss.item(), labels[model_id].size(0))
 
     def test_on_batch(self, image, label):
         image = image.cuda()
@@ -202,17 +202,17 @@ class KnowledgeTransferGraph:
 
         outputs = []
         labels = []
-        for node in self.nodes:
-            node.model.eval()
+        for learner in self.learners:
+            learner.model.eval()
             with torch.amp.autocast("cuda"):
                 with torch.no_grad():
-                    y = node.model(image)
+                    y = learner.model(image)
             outputs.append(y)
             labels.append(label)
 
-        for model_id, node in enumerate(self.nodes):
-            [top1] = node.eval(outputs[model_id], labels[model_id], topk=(1,))
-            node.score_meter.update(top1.item(), labels[model_id].size(0))
+        for model_id, learner in enumerate(self.learners):
+            [top1] = learner.eval(outputs[model_id], labels[model_id], topk=(1,))
+            learner.score_meter.update(top1.item(), labels[model_id].size(0))
 
     def train(self):
         for epoch in range(1, self.max_epoch + 1):
@@ -223,48 +223,48 @@ class KnowledgeTransferGraph:
                 self.train_on_batch(
                     image=image, label=label, epoch=epoch - 1, num_iter=idx
                 )
-            for model_id, node in enumerate(self.nodes):
-                train_lr = node.optimizer.param_groups[0]["lr"]
-                train_loss = node.loss_meter.avg
-                train_score = node.score_meter.avg
-                node.writer.add_scalar("train_lr", train_lr, epoch)
-                node.writer.add_scalar("train_loss", train_loss, epoch)
-                node.writer.add_scalar("train_score", train_score, epoch)
-                if node.scheduler is not None:
-                    node.scheduler.step()
+            for model_id, learner in enumerate(self.learners):
+                train_lr = learner.optimizer.param_groups[0]["lr"]
+                train_loss = learner.loss_meter.avg
+                train_score = learner.score_meter.avg
+                learner.writer.add_scalar("train_lr", train_lr, epoch)
+                learner.writer.add_scalar("train_loss", train_loss, epoch)
+                learner.writer.add_scalar("train_score", train_score, epoch)
+                if learner.scheduler is not None:
+                    learner.scheduler.step()
                 print(
                     "model_id: {0:}   loss :train={1:.3f}   score :train={2:.3f}".format(
                         model_id, train_loss, train_score
                     )
                 )
-                node.loss_meter.reset()
-                node.score_meter.reset()
+                learner.loss_meter.reset()
+                learner.score_meter.reset()
 
             for image, label in self.test_dataloader:
                 self.test_on_batch(image=image, label=label)
-            for model_id, node in enumerate(self.nodes):
-                test_score = node.score_meter.avg
-                node.writer.add_scalar("test_score", test_score, epoch)
+            for model_id, learner in enumerate(self.learners):
+                test_score = learner.score_meter.avg
+                learner.writer.add_scalar("test_score", test_score, epoch)
                 print(
                     "model_id: {0:}   score :test={1:.3f}".format(model_id, test_score)
                 )
-                if node.best_score <= node.score_meter.avg:
-                    if node.save_dir:
-                        save_checkpoint(node.model, node.save_dir, epoch, is_best=True)
-                    node.best_score = node.score_meter.avg
+                if learner.best_score <= learner.score_meter.avg:
+                    if learner.save_dir:
+                        save_checkpoint(learner.model, learner.save_dir, epoch, is_best=True)
+                    learner.best_score = learner.score_meter.avg
                 if model_id == 0 and self.trial is not None:
                     self.trial.report(test_score, step=epoch)
                     if self.trial.should_prune():
                         raise optuna.TrialPruned()
-                node.score_meter.reset()
+                learner.score_meter.reset()
             elapsed_time = time.time() - start_time
             print("  elapsed_time:{0:.3f}[sec]".format(elapsed_time))
 
-        for node in self.nodes:
-            node.writer.close()
+        for learner in self.learners:
+            learner.writer.close()
 
-        best_score = self.nodes[0].best_score
+        best_score = self.learners[0].best_score
         return best_score
 
     def __len__(self):
-        return len(self.nodes)
+        return len(self.learners)

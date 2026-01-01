@@ -1,10 +1,10 @@
-# Knowledge Transfer Graph Documentation
+# Deep Collaborative Learning Documentation
 
-Welcome to the Knowledge Transfer Graph (KTG) documentation. This library implements the "Knowledge Transfer Graph for Deep Collaborative Learning" framework, as described in the [ACCV 2020 paper](https://openaccess.thecvf.com/content/ACCV2020/html/Minami_Knowledge_Transfer_Graph_for_Deep_Collaborative_Learning_ACCV_2020_paper.html).
+Welcome to the Deep Collaborative Learning (DCL) documentation. This library implements the "Knowledge Transfer Graph for Deep Collaborative Learning" framework, as described in the [ACCV 2020 paper](https://openaccess.thecvf.com/content/ACCV2020/html/Minami_Knowledge_Transfer_Graph_for_Deep_Collaborative_Learning_ACCV_2020_paper.html).
 
 ## Overview
 
-Knowledge Transfer Graph is a framework for training multiple neural networks collaboratively, where each network can learn from others through knowledge transfer. The framework uses a graph structure where nodes represent models and edges control the knowledge transfer between them.
+Deep Collaborative Learning (DCL) framework for training multiple neural networks collaboratively, where each network can learn from others through knowledge transfer. The framework uses a structure where learners represent models and links control the knowledge transfer between them.
 
 ### Key Features
 
@@ -24,19 +24,19 @@ Knowledge Transfer Graph is a framework for training multiple neural networks co
 ## Quick Example
 
 ```python
-from dcl import KnowledgeTransferGraph, Node, build_edges, gates
+from dcl import DistillationTrainer, Learner, build_links, gates
 from dcl.models import cifar_models
 from dcl.utils import AverageMeter
 from torch.utils.tensorboard import SummaryWriter
 import torch
 import torch.nn as nn
 
-# Create nodes (models)
+# Create learners (models)
 max_epoch = 200
 num_nodes = 3
 num_classes = 10
 
-nodes = []
+learners = []
 for i in range(num_nodes):
     # Select model
     if i == 0:
@@ -57,8 +57,8 @@ for i in range(num_nodes):
     # Define gates
     gates_list = [gates.ThroughGate(max_epoch) for _ in range(num_nodes)]
     
-    # Build edges
-    edges = build_edges(criterions, gates_list)
+    # Build links
+    links = build_links(criterions, gates_list)
     
     # Create optimizer and scheduler
     optimizer = torch.optim.SGD(
@@ -73,26 +73,28 @@ for i in range(num_nodes):
     )
     
     # Create node
-    node = Node(
+    # Create learner
+    learner = Learner(
         model=model,
         writer=SummaryWriter(f"runs/node_{i}"),
         scaler=torch.amp.GradScaler("cuda"),
         optimizer=optimizer,
         scheduler=scheduler,
-        edges=edges,
+        links=links,
         loss_meter=AverageMeter(),
         score_meter=AverageMeter(),
     )
-    nodes.append(node)
+    learners.append(learner)
 
 # Create and train the graph
-graph = KnowledgeTransferGraph(
-    nodes=nodes,
+# Create and train
+trainer = DistillationTrainer(
+    learners=learners,
     max_epoch=max_epoch,
     train_dataloader=train_loader,
     test_dataloader=test_loader,
 )
-best_score = graph.train()
+best_score = trainer.train()
 ```
 
 ## Citation

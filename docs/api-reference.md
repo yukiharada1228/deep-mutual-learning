@@ -4,15 +4,15 @@ Complete API documentation for the Knowledge Transfer Graph library.
 
 ## Core Classes
 
-### KnowledgeTransferGraph
+### DistillationTrainer
 
 Main class for training multiple models collaboratively.
 
 ```python
-class KnowledgeTransferGraph:
+class DistillationTrainer:
     def __init__(
         self,
-        nodes: list[Node],
+        learners: list[Learner],
         max_epoch: int,
         train_dataloader: DataLoader,
         test_dataloader: DataLoader,
@@ -21,7 +21,7 @@ class KnowledgeTransferGraph:
 ```
 
 **Parameters:**
-- `nodes` (list[Node]): List of Node instances representing models in the graph
+- `learners` (list[Learner]): List of Learner instances representing models
 - `max_epoch` (int): Maximum number of training epochs
 - `train_dataloader` (DataLoader): DataLoader for training data
 - `test_dataloader` (DataLoader): DataLoader for validation/test data
@@ -30,15 +30,15 @@ class KnowledgeTransferGraph:
 **Methods:**
 
 #### `train() -> float`
-Train all models in the graph and return the best validation score.
+Train all learners and return the best validation score.
 
 **Returns:**
 - `float`: Best validation accuracy (from node 0)
 
 **Example:**
 ```python
-graph = KnowledgeTransferGraph(nodes, max_epoch=200, ...)
-best_score = graph.train()
+trainer = DistillationTrainer(learners, max_epoch=200, ...)
+best_score = trainer.train()
 ```
 
 #### `train_on_batch(image, label, epoch, num_iter)`
@@ -59,18 +59,18 @@ Process a single validation batch.
 
 ---
 
-### Node
+### Learner
 
-Represents a single model in the knowledge transfer graph.
+Represents a single model in the distillation process.
 
 ```python
 @dataclass
-class Node:
+class Learner:
     model: nn.Module
     writer: SummaryWriter
     scaler: torch.amp.GradScaler
     optimizer: Optimizer
-    edges: list[Edge]
+    links: list[DistillationLink]
     loss_meter: AverageMeter
     score_meter: AverageMeter
     scheduler: Optional[LRScheduler] = None
@@ -84,7 +84,7 @@ class Node:
 - `writer` (SummaryWriter): TensorBoard writer for logging
 - `scaler` (torch.amp.GradScaler): Gradient scaler for mixed precision
 - `optimizer` (Optimizer): Optimizer for parameter updates
-- `edges` (list[Edge]): List of incoming edges (knowledge transfer paths)
+- `links` (list[DistillationLink]): List of incoming links (knowledge transfer paths)
 - `loss_meter` (AverageMeter): Tracks average training loss
 - `score_meter` (AverageMeter): Tracks average accuracy/score
 - `scheduler` (Optional[LRScheduler]): Learning rate scheduler
@@ -92,16 +92,16 @@ class Node:
 - `eval` (nn.Module): Evaluation function (default: accuracy)
 - `save_dir` (Optional[str]): Directory to save checkpoints
 
-**Note:** The `total_loss` field is automatically created from `edges` in `__post_init__` as a `TotalLoss` instance.
+**Note:** The `composite_loss` field is automatically created from `links` in `__post_init__` as a `CompositeLoss` instance.
 
 ---
 
-### Edge
+### DistillationLink
 
 Represents a knowledge transfer path between models.
 
 ```python
-class Edge(nn.Module):
+class DistillationLink(nn.Module):
     def __init__(self, criterion: nn.Module, gate: nn.Module)
 ```
 
@@ -111,30 +111,30 @@ class Edge(nn.Module):
 
 **Methods:**
 
-#### `forward(target_output, label, source_output, epoch, is_self_edge) -> Tensor`
-Compute the weighted loss for this edge.
+#### `forward(target_output, label, source_output, epoch, is_self_link) -> Tensor`
+Compute the weighted loss for this link.
 
 **Parameters:**
 - `target_output` (Tensor): Output from the target model
-- `label` (Tensor): Ground truth labels (for self-edges)
-- `source_output` (Tensor): Output from the source model (for transfer edges)
+- `label` (Tensor): Ground truth labels (for self-links)
+- `source_output` (Tensor): Output from the source model (for transfer links)
 - `epoch` (int): Current epoch (0-indexed)
-- `is_self_edge` (bool): Whether this is a self-edge
+- `is_self_link` (bool): Whether this is a self-link
 
 **Returns:**
 - `Tensor`: Weighted loss value
 
 ---
 
-### build_edges
+### build_links
 
-Helper function to create a list of Edge instances.
+Helper function to create a list of DistillationLink instances.
 
 ```python
-def build_edges(
+def build_links(
     criterions: list[nn.Module],
     gates: list[nn.Module]
-) -> list[Edge]
+) -> list[DistillationLink]
 ```
 
 **Parameters:**
@@ -142,7 +142,7 @@ def build_edges(
 - `gates` (list[nn.Module]): List of gate modules
 
 **Returns:**
-- `list[Edge]`: List of Edge instances
+- `list[DistillationLink]`: List of DistillationLink instances
 
 **Broadcasting:**
 - If `criterions` has length 1 and `gates` has length N>1, `criterions` is broadcast to length N
@@ -157,7 +157,7 @@ criterions = [
     nn.KLDivLoss(reduction="none")
 ]
 gates = [ThroughGate(200), ThroughGate(200), CutoffGate(200)]
-edges = build_edges(criterions, gates)
+links = build_links(criterions, gates)
 ```
 
 ---
@@ -247,7 +247,7 @@ KTG uses PyTorch's official loss functions with `reduction="none"` for per-sampl
 
 ### CrossEntropyLoss
 
-Standard classification loss for self-edges (training with ground truth labels):
+Standard classification loss for self-links (training with ground truth labels):
 
 ```python
 criterion = nn.CrossEntropyLoss(reduction="none")
@@ -257,13 +257,13 @@ criterion = nn.CrossEntropyLoss(reduction="none")
 
 ### KLDivLoss
 
-Knowledge distillation loss for transfer edges. Uses PyTorch's official implementation:
+Knowledge distillation loss for transfer links. Uses PyTorch's official implementation:
 
 ```python
 criterion = nn.KLDivLoss(reduction="none")
 ```
 
-**Important:** The Edge class automatically converts logits to the proper format:
+**Important:** The DistillationLink class automatically converts logits to the proper format:
 ```python
 # Student output → log-probabilities
 target_log_prob = F.log_softmax(target_output, dim=-1)

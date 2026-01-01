@@ -12,7 +12,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from dcl import KnowledgeTransferGraph, Node, build_edges, gates
+from dcl import DistillationTrainer, Learner, build_links, gates
 from dcl.models import cifar_models
 from dcl.dataset.cifar_datasets.cifar10 import get_datasets
 from dcl.utils import AverageMeter, WorkerInitializer, set_seed
@@ -39,12 +39,12 @@ val_loader = DataLoader(
     worker_init_fn=WorkerInitializer(42).worker_init_fn,
 )
 
-# Create nodes
+# Create learners
 max_epoch = 200
 num_nodes = 3
 num_classes = 10
 
-nodes = []
+learners = []
 for i in range(num_nodes):
     # Select model
     if i == 0:
@@ -62,11 +62,11 @@ for i in range(num_nodes):
         else:
             criterions.append(nn.KLDivLoss(reduction="none"))
     
-    # Define gates: ThroughGate for all edges
+    # Define gates: ThroughGate for all links
     gates_list = [gates.ThroughGate(max_epoch) for _ in range(num_nodes)]
     
-    # Build edges
-    edges = build_edges(criterions, gates_list)
+    # Build links
+    links = build_links(criterions, gates_list)
     
     # Create optimizer and scheduler
     optimizer = torch.optim.SGD(
@@ -80,28 +80,28 @@ for i in range(num_nodes):
         optimizer, T_max=max_epoch, eta_min=0.0
     )
     
-    # Create node
-    node = Node(
+    # Create learner
+    learner = Learner(
         model=model,
         writer=SummaryWriter(f"runs/basic_example/node_{i}"),
         scaler=torch.amp.GradScaler("cuda"),
         optimizer=optimizer,
         scheduler=scheduler,
-        edges=edges,
+        links=links,
         loss_meter=AverageMeter(),
         score_meter=AverageMeter(),
     )
-    nodes.append(node)
+    learners.append(learner)
 
-# Create and train graph
-graph = KnowledgeTransferGraph(
-    nodes=nodes,
+# Create and train
+trainer = DistillationTrainer(
+    learners=learners,
     max_epoch=max_epoch,
     train_dataloader=train_loader,
     test_dataloader=val_loader,
 )
 
-best_score = graph.train()
+best_score = trainer.train()
 print(f"Best validation accuracy: {best_score:.2f}%")
 ```
 
@@ -114,12 +114,12 @@ Use different gates to control knowledge transfer over time.
 
 # Define gates with temporal scheduling
 gates_list = [
-    gates.ThroughGate(max_epoch),    # Self-edge: always on
+    gates.ThroughGate(max_epoch),    # Self-link: always on
     gates.LinearGate(max_epoch),     # Gradually increase transfer
     gates.CorrectGate(max_epoch),    # Filter by teacher correctness
 ]
 
-edges = build_edges(criterions, gates_list)
+links = build_links(criterions, gates_list)
 ```
 
 This configuration:
@@ -162,9 +162,9 @@ def objective(trial):
     num_nodes = 3
     num_classes = 10
     
-    nodes = []
+    learners = []
     for i in range(num_nodes):
-        # Suggest gate for each edge
+        # Suggest gate for each link
         gates_list = []
         criterions = []
         for j in range(num_nodes):
@@ -181,7 +181,7 @@ def objective(trial):
             gate = getattr(gates, gate_name)(max_epoch)
             gates_list.append(gate)
         
-        # Suggest model for non-primary nodes
+        # Suggest model for non-primary learners
         if i == 0:
             model_name = "resnet32"
         else:
@@ -192,7 +192,7 @@ def objective(trial):
         
         model = getattr(cifar_models, model_name)(num_classes).cuda()
         
-        edges = build_edges(criterions, gates_list)
+        links = build_links(criterions, gates_list)
         
         optimizer = torch.optim.SGD(
             model.parameters(),
@@ -205,27 +205,27 @@ def objective(trial):
             optimizer, T_max=max_epoch, eta_min=0.0
         )
         
-        node = Node(
+        learner = Learner(
             model=model,
             writer=SummaryWriter(f"runs/optuna/{trial.number:04}/node_{i}"),
             scaler=torch.amp.GradScaler("cuda"),
             optimizer=optimizer,
             scheduler=scheduler,
-            edges=edges,
+            links=links,
             loss_meter=AverageMeter(),
             score_meter=AverageMeter(),
         )
-        nodes.append(node)
+        learners.append(learner)
     
-    graph = KnowledgeTransferGraph(
-        nodes=nodes,
+    trainer = DistillationTrainer(
+        learners=learners,
         max_epoch=max_epoch,
         train_dataloader=train_loader,
         test_dataloader=val_loader,
         trial=trial,  # Pass trial for pruning
     )
     
-    best_score = graph.train()
+    best_score = trainer.train()
     return best_score
 
 # Create Optuna study
@@ -288,14 +288,14 @@ Initialize some models with pre-trained weights. This is useful when you want to
 ```python
 from dcl.utils import load_checkpoint
 
-# ... create nodes ...
+# ... create learners ...
 
-for i, node in enumerate(nodes):
-    if i > 0:  # Initialize non-primary nodes with pre-trained weights
+for i, learner in enumerate(learners):
+    if i > 0:  # Initialize non-primary learners with pre-trained weights
         # Get model name (e.g., "ResNet32", "ResNet110")
-        model_name = node.model.__class__.__name__
+        model_name = learner.model.__class__.__name__
         load_checkpoint(
-            model=node.model,
+            model=learner.model,
             save_dir=f"checkpoint/pre-train/{model_name}",
             is_best=True,
         )
@@ -341,14 +341,14 @@ for j in range(num_nodes):
 
 ## Example 7: Asymmetric Graph
 
-Create an asymmetric graph where not all models transfer to each other. Note that in the current implementation, all nodes must have the same number of edges (one for each node including itself). To create asymmetric transfer, use `CutoffGate` to disable specific transfers:
+Create an asymmetric graph where not all models transfer to each other. Note that in the current implementation, all learners must have the same number of links (one for each learner including itself). To create asymmetric transfer, use `CutoffGate` to disable specific transfers:
 
 ```python
 # Model 0 receives from all models
 # Model 1 receives from all models (but can use CutoffGate to disable specific transfers)
 # Model 2 receives from models 0 and 1 (uses CutoffGate for self-to-self transfer)
 
-nodes = []
+learners = []
 for i in range(3):
     criterions = []
     gates_list = []
@@ -372,8 +372,8 @@ for i in range(3):
             else:
                 gates_list.append(gates.ThroughGate(max_epoch))
     
-    edges = build_edges(criterions, gates_list)
-    # ... create node ...
+    links = build_links(criterions, gates_list)
+    # ... create learner ...
 ```
 
 ## Example 8: Monitoring and Logging
@@ -381,12 +381,12 @@ for i in range(3):
 Access training metrics during training.
 
 ```python
-# After training, access metrics from nodes
-for i, node in enumerate(nodes):
-    print(f"Node {i}:")
-    print(f"  Best score: {node.best_score:.2f}%")
-    print(f"  Final loss: {node.loss_meter.avg:.4f}")
-    print(f"  Final score: {node.score_meter.avg:.2f}%")
+# After training, access metrics from learners
+for i, learner in enumerate(learners):
+    print(f"Learner {i}:")
+    print(f"  Best score: {learner.best_score:.2f}%")
+    print(f"  Final loss: {learner.loss_meter.avg:.4f}")
+    print(f"  Final score: {learner.score_meter.avg:.2f}%")
 
 # View TensorBoard logs
 # tensorboard --logdir runs/

@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from dcl import KnowledgeTransferGraph, Node, build_edges
+from dcl import DistillationTrainer, Learner, build_links
 from dcl.dataset.cifar_datasets.cifar100 import get_datasets
 from dcl.gates import ThroughGate
 from dcl.models import cifar_models
@@ -70,7 +70,7 @@ scheduler_setting = {
 }
 
 num_classes = 100
-nodes = []
+learners = []
 
 gates_list = [ThroughGate(max_epoch)]
 criterions = [nn.CrossEntropyLoss(reduction="none")]
@@ -83,25 +83,25 @@ optimizer = getattr(torch.optim, str(optim_setting["name"]))(
 scheduler = getattr(torch.optim.lr_scheduler, str(scheduler_setting["name"]))(
     optimizer, **scheduler_setting["args"]
 )
-edges = build_edges(criterions, gates_list)
+links = build_links(criterions, gates_list)
 
-node = Node(
+learner = Learner(
     model=model,
     writer=writer,
     scaler=torch.amp.GradScaler("cuda"),
     save_dir=save_dir,
     optimizer=optimizer,
     scheduler=scheduler,
-    edges=edges,
+    links=links,
     loss_meter=AverageMeter(),
     score_meter=AverageMeter(),
 )
-nodes.append(node)
+learners.append(learner)
 
-graph = KnowledgeTransferGraph(
-    nodes=nodes,
+trainer = DistillationTrainer(
+    learners=learners,
     max_epoch=max_epoch,
     train_dataloader=train_dataloader,
     test_dataloader=val_dataloader,
 )
-graph.train()
+trainer.train()

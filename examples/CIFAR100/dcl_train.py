@@ -10,7 +10,7 @@ from optuna.study import MaxTrialsCallback
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from dcl import KnowledgeTransferGraph, Node, build_edges, gates
+from dcl import DistillationTrainer, Learner, build_links, gates
 from dcl.dataset.cifar_datasets.cifar100 import get_datasets
 from dcl.models import cifar_models
 from dcl.utils import (AverageMeter, WorkerInitializer, load_checkpoint,
@@ -88,7 +88,7 @@ def objective(trial):
     }
 
     num_classes = 100
-    nodes = []
+    learners = []
     for i in range(num_nodes):
         gates_list = []
         criterions = []
@@ -124,28 +124,28 @@ def objective(trial):
         scheduler = getattr(torch.optim.lr_scheduler, scheduler_setting["name"])(
             optimizer, **scheduler_setting["args"]
         )
-        edges = build_edges(criterions, gates_list)
+        links = build_links(criterions, gates_list)
 
-        node = Node(
+        learner = Learner(
             model=model,
             writer=writer,
             scaler=torch.amp.GradScaler("cuda"),
             optimizer=optimizer,
             scheduler=scheduler,
-            edges=edges,
+            links=links,
             loss_meter=AverageMeter(),
             score_meter=AverageMeter(),
         )
-        nodes.append(node)
+        learners.append(learner)
 
-    graph = KnowledgeTransferGraph(
-        nodes=nodes,
+    trainer = DistillationTrainer(
+        learners=learners,
         max_epoch=max_epoch,
         train_dataloader=train_dataloader,
         test_dataloader=val_dataloader,
         trial=trial,
     )
-    best_score = graph.train()
+    best_score = trainer.train()
     return best_score
 
 
