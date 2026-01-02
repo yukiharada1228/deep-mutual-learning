@@ -59,7 +59,9 @@ class DistillationLink(nn.Module):
             )
 
 
-def build_links(criterions: list[nn.Module], gates: list[nn.Module]) -> list[DistillationLink]:
+def build_links(
+    criterions: list[nn.Module], gates: list[nn.Module]
+) -> list[DistillationLink]:
     """
     Build a list of DistillationLink instances with simple length validation and one-sided broadcast.
 
@@ -79,49 +81,25 @@ def build_links(criterions: list[nn.Module], gates: list[nn.Module]) -> list[Dis
     return [DistillationLink(c, g) for c, g in zip(criterions, gates)]
 
 
-class CompositeLoss(nn.Module):
+class TotalLoss(nn.Module):
     def __init__(self, links: list[DistillationLink]):
-        super(CompositeLoss, self).__init__()
+        super(TotalLoss, self).__init__()
         # Store all incoming links
         self.incoming_links = nn.ModuleList(links)
 
     def forward(self, model_id, outputs, labels, epoch):
         if model_id < 0 or model_id >= len(outputs):
             raise ValueError(f"Invalid model_id: {model_id}")
-
-        supervised_loss = 0.0
-        distillation_losses = []
-        valid_teacher_count = 0
-
+        losses = []
         target_output = outputs[model_id]
         label = labels[model_id]
-
         for i, link in enumerate(self.incoming_links):
             if i == model_id:
-                # Self-link (supervised loss)
-                supervised_loss = link(target_output, label, None, epoch, True)
+                losses.append(link(target_output, label, None, epoch, True))
             else:
-                # Distillation link
-                # Check if the gate is CutoffGate
-                if not isinstance(link.gate, CutoffGate):
-                    valid_teacher_count += 1
-
-                dist_loss = link(target_output, None, outputs[i], epoch, False)
-                distillation_losses.append(dist_loss)
-
-        # Sum of distillation losses
-        distillation_loss_sum = (
-            torch.stack(distillation_losses).sum() if distillation_losses else 0.0
-        )
-
-        # Apply averaging if there are valid teachers
-        if valid_teacher_count > 0:
-            distillation_loss_mean = distillation_loss_sum / valid_teacher_count
-        else:
-            distillation_loss_mean = 0.0
-
-        total_loss = supervised_loss + distillation_loss_mean
-        return total_loss
+                losses.append(link(target_output, None, outputs[i], epoch, False))
+        loss = torch.stack(losses).sum()
+        return loss
 
 
 @dataclass
@@ -131,7 +109,7 @@ class Learner:
     scaler: torch.amp.GradScaler
     optimizer: Optimizer
     links: list[DistillationLink]
-    composite_loss: CompositeLoss = field(init=False)
+    composite_loss: TotalLoss = field(init=False)
     loss_meter: AverageMeter
     score_meter: AverageMeter
     scheduler: LRScheduler = None
@@ -140,7 +118,7 @@ class Learner:
     save_dir: Optional[str] = None
 
     def __post_init__(self):
-        self.composite_loss = CompositeLoss(links=self.links)
+        self.composite_loss = TotalLoss(links=self.links)
 
 
 class DistillationTrainer:
@@ -171,7 +149,9 @@ class DistillationTrainer:
         for learner in self.learners:
             # Check if all links have CutoffGate
             # If so, use eval mode (for pre-trained teacher models)
-            all_cutoff = all(isinstance(link.gate, CutoffGate) for link in learner.links)
+            all_cutoff = all(
+                isinstance(link.gate, CutoffGate) for link in learner.links
+            )
             if all_cutoff:
                 learner.model.eval()
                 with torch.no_grad(), torch.amp.autocast("cuda"):
@@ -249,7 +229,9 @@ class DistillationTrainer:
                 )
                 if learner.best_score <= learner.score_meter.avg:
                     if learner.save_dir:
-                        save_checkpoint(learner.model, learner.save_dir, epoch, is_best=True)
+                        save_checkpoint(
+                            learner.model, learner.save_dir, epoch, is_best=True
+                        )
                     learner.best_score = learner.score_meter.avg
                 if model_id == 0 and self.trial is not None:
                     self.trial.report(test_score, step=epoch)
