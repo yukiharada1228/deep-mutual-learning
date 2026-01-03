@@ -45,6 +45,8 @@ def objective(trial):
     # Fix the seed value
     set_seed(manualSeed)
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     # Prepare the CIFAR-100 for training
     batch_size = 64
     num_workers = 10
@@ -107,7 +109,7 @@ def objective(trial):
             model_name = models_name[0]
         else:
             model_name = trial.suggest_categorical(f"{i}_model", models_name)
-        model = getattr(cifar_models, model_name)(num_classes).cuda()
+        model = getattr(cifar_models, model_name)(num_classes).to(device)
         if (
             all(gate.__class__.__name__ == "CutoffGate" for gate in gates_list)
             and i != 0
@@ -128,7 +130,7 @@ def objective(trial):
         learner = Learner(
             model=model,
             writer=writer,
-            scaler=torch.amp.GradScaler("cuda"),
+            scaler=torch.amp.GradScaler(device.type, enabled=(device.type == "cuda")),
             optimizer=optimizer,
             scheduler=scheduler,
             links=links,
@@ -142,6 +144,7 @@ def objective(trial):
         max_epoch=max_epoch,
         train_dataloader=train_dataloader,
         test_dataloader=val_dataloader,
+        device=device,
         trial=trial,
     )
     best_score = trainer.train()

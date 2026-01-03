@@ -27,6 +27,8 @@ wd = float(args.wd)
 # Fix the seed value
 set_seed(manualSeed)
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 # Prepare the CIFAR-100 for training
 batch_size = 64
 num_workers = 10
@@ -74,7 +76,7 @@ learners = []
 
 gates_list = [ThroughGate(max_epoch)]
 criterions = [nn.CrossEntropyLoss(reduction="none")]
-model = getattr(cifar_models, model_name)(num_classes).cuda()
+model = getattr(cifar_models, model_name)(num_classes).to(device)
 writer = SummaryWriter(f"runs/pre-train/{model_name}")
 save_dir = f"checkpoint/pre-train/{model_name}"
 optimizer = getattr(torch.optim, str(optim_setting["name"]))(
@@ -88,7 +90,7 @@ links = build_links(criterions, gates_list)
 learner = Learner(
     model=model,
     writer=writer,
-    scaler=torch.amp.GradScaler("cuda"),
+    scaler=torch.amp.GradScaler(device.type, enabled=(device.type == "cuda")),
     save_dir=save_dir,
     optimizer=optimizer,
     scheduler=scheduler,
@@ -103,5 +105,6 @@ trainer = DistillationTrainer(
     max_epoch=max_epoch,
     train_dataloader=train_dataloader,
     test_dataloader=val_dataloader,
+    device=device,
 )
 trainer.train()

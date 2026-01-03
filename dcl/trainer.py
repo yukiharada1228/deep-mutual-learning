@@ -129,6 +129,9 @@ class Learner:
     def __post_init__(self):
         self.composite_loss = CompositeLoss(links=self.links)
 
+    def get_current_lr(self) -> float:
+        return self.optimizer.param_groups[0]["lr"]
+
 
 class DistillationTrainer:
     def __init__(
@@ -137,6 +140,7 @@ class DistillationTrainer:
         max_epoch: int,
         train_dataloader: DataLoader,
         test_dataloader: DataLoader,
+        device: torch.device,
         trial=None,
     ):
         self.learners = learners
@@ -146,12 +150,13 @@ class DistillationTrainer:
         self.max_epoch = max_epoch
         self.train_dataloader = train_dataloader
         self.test_dataloader = test_dataloader
+        self.device = device
         self.trial = trial
         self.data_length = len(self.train_dataloader)
 
     def train_on_batch(self, image, label, epoch, num_iter):
-        image = image.cuda()
-        label = label.cuda()
+        image = image.to(self.device)
+        label = label.to(self.device)
 
         outputs = []
         labels = []
@@ -161,17 +166,17 @@ class DistillationTrainer:
             )
             if all_cutoff:
                 learner.model.eval()
-                with torch.no_grad(), torch.amp.autocast("cuda"):
+                with torch.no_grad(), torch.amp.autocast(device_type=self.device.type):
                     y = learner.model(image)
             else:
                 learner.model.train()
-                with torch.amp.autocast("cuda"):
+                with torch.amp.autocast(device_type=self.device.type):
                     y = learner.model(image)
             outputs.append(y)
             labels.append(label)
 
         for model_id, learner in enumerate(self.learners):
-            with torch.amp.autocast("cuda"):
+            with torch.amp.autocast(device_type=self.device.type):
                 loss = learner.composite_loss(model_id, outputs, labels, epoch)
                 if learner.model.training:
                     learner.scaler.scale(loss).backward()
@@ -183,14 +188,14 @@ class DistillationTrainer:
             learner.loss_meter.update(loss.item(), labels[model_id].size(0))
 
     def test_on_batch(self, image, label):
-        image = image.cuda()
-        label = label.cuda()
+        image = image.to(self.device)
+        label = label.to(self.device)
 
         outputs = []
         labels = []
         for learner in self.learners:
             learner.model.eval()
-            with torch.amp.autocast("cuda"):
+            with torch.amp.autocast(device_type=self.device.type):
                 with torch.no_grad():
                     y = learner.model(image)
             outputs.append(y)
@@ -210,7 +215,7 @@ class DistillationTrainer:
                     image=image, label=label, epoch=epoch - 1, num_iter=idx
                 )
             for model_id, learner in enumerate(self.learners):
-                train_lr = learner.optimizer.param_groups[0]["lr"]
+                train_lr = learner.get_current_lr()
                 train_loss = learner.loss_meter.avg
                 train_score = learner.score_meter.avg
                 learner.writer.add_scalar("train_lr", train_lr, epoch)
