@@ -93,6 +93,7 @@ trainer = DistillationTrainer(
     max_epoch=max_epoch,
     train_dataloader=train_loader,
     test_dataloader=test_loader,
+    device=torch.device("cuda"),
 )
 best_score = trainer.train()
 ```

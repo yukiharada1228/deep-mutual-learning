@@ -99,6 +99,7 @@ trainer = DistillationTrainer(
     max_epoch=max_epoch,
     train_dataloader=train_loader,
     test_dataloader=val_loader,
+    device=torch.device("cuda"),
 )
 
 best_score = trainer.train()
@@ -222,6 +223,7 @@ def objective(trial):
         max_epoch=max_epoch,
         train_dataloader=train_loader,
         test_dataloader=val_loader,
+        device=torch.device("cuda"),
         trial=trial,  # Pass trial for pruning
     )
     
@@ -294,14 +296,12 @@ for i, learner in enumerate(learners):
     if i > 0:  # Initialize non-primary learners with pre-trained weights
         # Get model name (e.g., "ResNet32", "ResNet110")
         model_name = learner.model.__class__.__name__
+        checkpoint_path = f"checkpoint/pre-train/{model_name}/best_checkpoint.pkl"
         load_checkpoint(
             model=learner.model,
-            save_dir=f"checkpoint/pre-train/{model_name}",
-            is_best=True,
+            checkpoint_path=checkpoint_path,
         )
 ```
-
-**Note:** The checkpoint file should be saved as `best_checkpoint.pkl` in the specified directory when using `is_best=True`.
 
 ## Example 6: Custom Loss Function
 

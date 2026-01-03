@@ -16,6 +16,7 @@ class DistillationTrainer:
         max_epoch: int,
         train_dataloader: DataLoader,
         test_dataloader: DataLoader,
+        device: torch.device,
         trial: Optional[optuna.Trial] = None,
     )
 ```
@@ -25,6 +26,7 @@ class DistillationTrainer:
 - `max_epoch` (int): Maximum number of training epochs
 - `train_dataloader` (DataLoader): DataLoader for training data
 - `test_dataloader` (DataLoader): DataLoader for validation/test data
+- `device` (torch.device): Device to use for training (e.g., "cuda" or "cpu")
 - `trial` (Optional[optuna.Trial]): Optuna trial object for hyperparameter optimization
 
 **Methods:**
@@ -206,7 +208,7 @@ class LinearGate(nn.Module):
 
 ### CorrectGate
 
-Filters samples based on teacher's prediction correctness (as proposed in the original paper).
+Filters samples based on teacher's prediction correctness.
 
 ```python
 class CorrectGate(nn.Module):
@@ -215,7 +217,6 @@ class CorrectGate(nn.Module):
         self,
         loss: Tensor,
         epoch: int,
-        student_logits: Tensor,
         teacher_logits: Tensor,
         label: Tensor,
         **kwargs
@@ -225,15 +226,12 @@ class CorrectGate(nn.Module):
 **Parameters:**
 - `loss` (Tensor): Per-sample losses, shape `(batch_size,)`
 - `epoch` (int): Current epoch (0-indexed)
-- `student_logits` (Tensor): Student model's output logits
 - `teacher_logits` (Tensor): Teacher model's output logits
 - `label` (Tensor): Ground truth labels
 
 **Filtering logic:**
-- TT (Both correct): weight = 1.0
-- TF (Teacher correct, student wrong): weight = 1.0
-- FT (Teacher wrong, student correct): weight = 0.0
-- FF (Both wrong): weight = 0.0
+- Teacher correct: weight = 1.0 (approximated by mask)
+- Teacher wrong: weight = 0.0
 
 Only transfers knowledge when the teacher makes correct predictions.
 
@@ -335,17 +333,13 @@ Load model checkpoint.
 ```python
 def load_checkpoint(
     model: nn.Module,
-    save_dir: str,
-    epoch: int = 1,
-    is_best: bool = False
+    checkpoint_path: str
 )
 ```
 
 **Parameters:**
 - `model` (nn.Module): Model to load weights into
-- `save_dir` (str): Directory containing checkpoint
-- `epoch` (int): Epoch number (ignored if `is_best=True`)
-- `is_best` (bool): If True, load from `best_checkpoint.pkl`
+- `checkpoint_path` (str): Path to the checkpoint file
 
 ### set_seed
 

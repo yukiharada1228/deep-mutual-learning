@@ -29,6 +29,7 @@ class DistillationTrainer:
         max_epoch: int,
         train_dataloader: DataLoader,
         test_dataloader: DataLoader,
+        device: torch.device,
         trial=None,
     )
 ```
@@ -92,7 +93,6 @@ class DistillationLink(nn.Module):
 
             return self.gate(
                 loss, epoch,
-                student_logits=target_output,
                 teacher_logits=source_output,
                 label=label
             )
@@ -208,25 +208,20 @@ def forward(self, loss, epoch, **kwargs):
 ```
 
 ### CorrectGate
-
-Filters samples based on teacher's prediction correctness (as proposed in the paper):
+ 
+Filters samples based on teacher's prediction correctness:
 ```python
-def forward(self, loss, epoch, student_logits, teacher_logits, label, **kwargs):
+def forward(self, loss, epoch, teacher_logits, label, **kwargs):
+    if teacher_logits is None or label is None:
+        return loss.mean()
+
     # Determine correctness of predictions
-    true_s = student_logits.argmax(dim=1) == label
     true_t = teacher_logits.argmax(dim=1) == label
-
-    # Create masks for each case
-    TT = ((true_t == 1) & (true_s == 1)).float()  # Both correct
-    TF = ((true_t == 1) & (true_s == 0)).float()  # Teacher correct, student wrong
-    FT = ((true_t == 0) & (true_s == 1)).float()  # Teacher wrong, student correct
-    FF = ((true_t == 0) & (true_s == 0)).float()  # Both wrong
-
-    # Paper definition: TT=1, TF=1, FT=0, FF=0
+ 
     # Only transfer when teacher is correct
-    mask = 1 * TT + 1 * TF + 0 * FT + 0 * FF
-
-    return (loss * mask).mean()
+    mask = true_t.float()
+ 
+    return (loss * mask).sum() / (mask.sum() + 1e-8)
 ```
 
 ## Loss Functions
