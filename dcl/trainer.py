@@ -78,37 +78,35 @@ class CompositeLoss(nn.Module):
         self.incoming_links = nn.ModuleList(links)
 
     def forward(self, model_id, outputs, labels, epoch):
-        if model_id < 0 or model_id >= len(outputs):
-            raise ValueError(f"Invalid model_id: {model_id}")
-
-        supervised_loss = 0.0
-        distillation_losses = []
-        valid_teacher_count = 0
-
         target_output = outputs[model_id]
         label = labels[model_id]
 
+        # Supervised Loss (Self-link)
+        supervised_loss = self.incoming_links[model_id](
+            target_output, label, None, epoch, is_self_link=True
+        )
+
+        # Distillation Loss (Other links)
+        distillation_loss_sum = 0.0
+        valid_teacher_count = 0
+
         for i, link in enumerate(self.incoming_links):
             if i == model_id:
-                supervised_loss = link(target_output, label, None, epoch, True)
-            else:
-                if not isinstance(link.gate, CutoffGate):
-                    valid_teacher_count += 1
+                continue
 
-                dist_loss = link(target_output, None, outputs[i], epoch, False)
-                distillation_losses.append(dist_loss)
+            if not isinstance(link.gate, CutoffGate):
+                valid_teacher_count += 1
 
-        distillation_loss_sum = (
-            torch.stack(distillation_losses).sum() if distillation_losses else 0.0
-        )
+            distillation_loss_sum = distillation_loss_sum + link(
+                target_output, None, outputs[i], epoch, is_self_link=False
+            )
 
         if valid_teacher_count > 0:
             distillation_loss_mean = distillation_loss_sum / valid_teacher_count
         else:
-            distillation_loss_mean = 0.0
+            distillation_loss_mean = supervised_loss.new_zeros(())
 
-        total_loss = supervised_loss + distillation_loss_mean
-        return total_loss
+        return supervised_loss + distillation_loss_mean
 
 
 @dataclass
