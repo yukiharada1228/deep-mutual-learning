@@ -28,9 +28,8 @@ class DistillationLink(nn.Module):
         label,
         source_output,
         epoch: int,
-        is_self_link: bool,
     ):
-        if is_self_link:
+        if source_output is None:
             loss = self.criterion(target_output, label)
             return self.gate(loss, epoch)
         else:
@@ -83,7 +82,7 @@ class CompositeLoss(nn.Module):
 
         # Supervised Loss (Self-link)
         supervised_loss = self.incoming_links[model_id](
-            target_output, label, None, epoch, is_self_link=True
+            target_output, label, None, epoch
         )
 
         # Distillation Loss (Other links)
@@ -98,7 +97,7 @@ class CompositeLoss(nn.Module):
                 valid_teacher_count += 1
 
             distillation_loss_sum = distillation_loss_sum + link(
-                target_output, None, outputs[i], epoch, is_self_link=False
+                target_output, None, outputs[i], epoch
             )
 
         if valid_teacher_count > 0:
