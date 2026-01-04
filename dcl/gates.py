@@ -15,7 +15,7 @@ class CutoffGate(nn.Module):
         super(CutoffGate, self).__init__()
 
     def forward(self, loss, epoch, **kwargs):
-        return torch.zeros_like(loss[0], requires_grad=True).sum()
+        return loss.new_zeros((), requires_grad=True)
 
 
 class LinearGate(nn.Module):
