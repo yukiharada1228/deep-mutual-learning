@@ -26,6 +26,8 @@ wd = float(args.wd)
 # Fix the seed value
 set_seed(manualSeed)
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 # Prepare the CIFAR-100 for training
 batch_size = 64
 num_workers = 10
@@ -102,5 +104,6 @@ trainer = DistillationTrainer(
     max_epoch=max_epoch,
     train_dataloader=train_dataloader,
     test_dataloader=val_dataloader,
+    device=device,
 )
 trainer.train()
