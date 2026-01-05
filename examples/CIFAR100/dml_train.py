@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import torch
 import torch.nn as nn
@@ -8,22 +9,41 @@ from torch.utils.tensorboard import SummaryWriter
 import torchvision
 from torchvision import transforms
 
-from dcl import DistillationTrainer, Learner, build_links
-from dcl.gates import ThroughGate
+from dcl import DistillationTrainer, Learner, build_links, gates
 from dcl.models import cifar_models
 from dcl.utils import AverageMeter, WorkerInitializer, set_seed
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--seed", default=42)
-parser.add_argument("--lr", default=0.1)
-parser.add_argument("--wd", default=5e-4)
-parser.add_argument("--model", default="resnet32")
+parser.add_argument("--seed", default=42, type=int)
+parser.add_argument("--lr", default=0.1, type=float)
+parser.add_argument("--wd", default=5e-4, type=float)
+parser.add_argument(
+    "--models",
+    default=["resnet32"],
+    nargs="+",
+    type=str,
+    help="List of model names to train with DML",
+)
+parser.add_argument(
+    "--num-nodes",
+    type=int,
+    default=2,
+    help="Number of nodes. If len(models) == 1, it will be broadcasted to this number.",
+)
 
 args = parser.parse_args()
 manualSeed = int(args.seed)
-model_name = args.model
+models_name = args.models
 lr = float(args.lr)
 wd = float(args.wd)
+num_nodes = args.num_nodes
+
+if len(models_name) == 1 and num_nodes > 1:
+    models_name = models_name * num_nodes
+elif len(models_name) != num_nodes:
+    raise ValueError(
+        f"Length of models ({len(models_name)}) must match num_nodes ({num_nodes}) or be 1."
+    )
 
 # Fix the seed value
 set_seed(manualSeed)
@@ -104,32 +124,45 @@ scheduler_setting = {
 
 num_classes = 100
 learners = []
+for i, model_name in enumerate(models_name):
+    gates_list = []
+    criterions = []
+    for j in range(num_nodes):
+        if i == j:
+            criterions.append(nn.CrossEntropyLoss(reduction="none"))
+        else:
+            criterions.append(nn.KLDivLoss(reduction="none"))
+        # In DML, we use ThroughGate for all connections
+        gates_list.append(gates.ThroughGate(max_epoch))
 
-gates_list = [ThroughGate(max_epoch)]
-criterions = [nn.CrossEntropyLoss(reduction="none")]
-model = getattr(cifar_models, model_name)(num_classes).to(device)
-writer = SummaryWriter(f"runs/pre-train/{model_name}")
-save_dir = f"checkpoint/pre-train/{model_name}"
-optimizer = getattr(torch.optim, str(optim_setting["name"]))(
-    model.parameters(), **optim_setting["args"]
-)
-scheduler = getattr(torch.optim.lr_scheduler, str(scheduler_setting["name"]))(
-    optimizer, **scheduler_setting["args"]
-)
-links = build_links(criterions, gates_list)
+    model = getattr(cifar_models, model_name)(num_classes).to(device)
 
-learner = Learner(
-    model=model,
-    writer=writer,
-    scaler=torch.amp.GradScaler(device.type, enabled=(device.type == "cuda")),
-    save_dir=save_dir,
-    optimizer=optimizer,
-    scheduler=scheduler,
-    links=links,
-    loss_meter=AverageMeter(),
-    score_meter=AverageMeter(),
-)
-learners.append(learner)
+    # Checkpoint path
+    save_dir = f"checkpoint/dml/{i}_{model_name}"
+
+    # Tensorboard writer
+    writer = SummaryWriter(f"runs/dml/{i}_{model_name}")
+
+    optimizer = getattr(torch.optim, optim_setting["name"])(
+        model.parameters(), **optim_setting["args"]
+    )
+    scheduler = getattr(torch.optim.lr_scheduler, scheduler_setting["name"])(
+        optimizer, **scheduler_setting["args"]
+    )
+    links = build_links(criterions, gates_list)
+
+    learner = Learner(
+        model=model,
+        writer=writer,
+        scaler=torch.amp.GradScaler(device.type, enabled=(device.type == "cuda")),
+        optimizer=optimizer,
+        scheduler=scheduler,
+        links=links,
+        loss_meter=AverageMeter(),
+        score_meter=AverageMeter(),
+        save_dir=save_dir,
+    )
+    learners.append(learner)
 
 trainer = DistillationTrainer(
     learners=learners,
