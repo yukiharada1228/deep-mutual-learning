@@ -135,7 +135,7 @@ for i, model_name in enumerate(models_name):
     model = getattr(cifar_models, model_name)(num_classes).to(device)
 
     # Checkpoint path
-    save_dir = f"checkpoint/dml/{i}_{model_name}"
+    save_dir = f"checkpoint/dml_{num_nodes}/{i}_{model_name}"
 
     # Tensorboard writer
     writer = SummaryWriter(f"runs/dml_{num_nodes}/{i}_{model_name}")
