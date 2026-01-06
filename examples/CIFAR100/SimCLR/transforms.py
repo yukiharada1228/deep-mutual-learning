@@ -1,6 +1,7 @@
 from typing import List
-from PIL import Image
+
 import torch
+from PIL import Image
 from torchvision import transforms
 
 
@@ -39,10 +40,7 @@ class SimCLRTransforms:
     BLUR_SIGMA_RANGE = (0.1, 2.0)
 
     def __init__(
-        self,
-        input_size: int = 32,
-        s: float = 0.5,
-        include_blur: bool = False
+        self, input_size: int = 32, s: float = 0.5, include_blur: bool = False
     ) -> None:
         self.input_size = input_size
         self.s = s
@@ -53,7 +51,7 @@ class SimCLRTransforms:
         """Calculate odd kernel size for Gaussian blur based on input size."""
         kernel_size = max(
             self.MIN_KERNEL_SIZE,
-            int(round(self.BLUR_KERNEL_SIZE_RATIO * self.input_size))
+            int(round(self.BLUR_KERNEL_SIZE_RATIO * self.input_size)),
         )
         # Ensure kernel size is odd
         if kernel_size % 2 == 0:
@@ -74,7 +72,9 @@ class SimCLRTransforms:
         augmentations = [
             transforms.RandomResizedCrop(self.input_size),
             transforms.RandomHorizontalFlip(p=self.HORIZONTAL_FLIP_PROB),
-            transforms.RandomApply([self._build_color_jitter()], p=self.COLOR_JITTER_PROB),
+            transforms.RandomApply(
+                [self._build_color_jitter()], p=self.COLOR_JITTER_PROB
+            ),
             transforms.RandomGrayscale(p=self.GRAYSCALE_PROB),
         ]
 
@@ -82,7 +82,11 @@ class SimCLRTransforms:
             kernel_size = self._calculate_blur_kernel_size()
             augmentations.append(
                 transforms.RandomApply(
-                    [transforms.GaussianBlur(kernel_size=kernel_size, sigma=self.BLUR_SIGMA_RANGE)],
+                    [
+                        transforms.GaussianBlur(
+                            kernel_size=kernel_size, sigma=self.BLUR_SIGMA_RANGE
+                        )
+                    ],
                     p=self.GAUSSIAN_BLUR_PROB,
                 )
             )

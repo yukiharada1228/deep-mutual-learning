@@ -5,14 +5,14 @@ import time
 import torch
 import torch.nn as nn
 import torchvision
-from dml import CompositeLoss, build_links
-from dml.utils import (AverageMeter, WorkerInitializer, accuracy,
-                       load_checkpoint, save_checkpoint, set_seed)
+from models import cifar_models
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 
-from models import cifar_models
+from dml import CompositeLoss, build_links
+from dml.utils import (AverageMeter, WorkerInitializer, accuracy,
+                       load_checkpoint, save_checkpoint, set_seed)
 
 parser = argparse.ArgumentParser(
     description="Knowledge Distillation (T=2) on CIFAR-100"
@@ -43,7 +43,9 @@ teacher_model_name = args.teacher_model
 student_model_name = args.student_model
 
 # Auto-generate teacher checkpoint path from teacher model name
-teacher_checkpoint = f"checkpoint/independent/{teacher_model_name}/latest_checkpoint.pkl"
+teacher_checkpoint = (
+    f"checkpoint/independent/{teacher_model_name}/latest_checkpoint.pkl"
+)
 if not os.path.exists(teacher_checkpoint):
     teacher_checkpoint = None
 

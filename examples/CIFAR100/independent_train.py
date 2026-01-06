@@ -5,14 +5,14 @@ import time
 import torch
 import torch.nn as nn
 import torchvision
-from dml import CompositeLoss, build_links
-from dml.utils import (AverageMeter, WorkerInitializer, accuracy,
-                       save_checkpoint, set_seed)
+from models import cifar_models
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 
-from models import cifar_models
+from dml import CompositeLoss, build_links
+from dml.utils import (AverageMeter, WorkerInitializer, accuracy,
+                       save_checkpoint, set_seed)
 
 parser = argparse.ArgumentParser(description="Independent Training on CIFAR-100")
 parser.add_argument("--seed", default=42, type=int, help="Random seed")
