@@ -1,14 +1,3 @@
-"""
-Knowledge Distillation with Temperature T=2
-Teacher: WideResNet28-2 (pre-trained) -> Student: ResNet32
-
-Settings:
-- Teacher: WRN28-2 (frozen or pre-trained)
-- Student: ResNet32 (learns from teacher)
-- Temperature: 2.0 for knowledge distillation
-- One-way distillation (not mutual learning)
-"""
-
 import argparse
 import os
 import time
