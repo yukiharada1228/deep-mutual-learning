@@ -195,12 +195,12 @@ for i, model_name in enumerate(models_name):
         print(f"    Link {k} ({link_type}): T={temp_str}")
 
     # Setup logging and checkpointing
-    # e.g. checkpoint/dml_t2.0/0_resnet32
-    save_dir = f"checkpoint/dml_t{temperature:.1f}/{i}_{model_name}"
+    # e.g. checkpoint/dml_t2.0_n4/0_resnet32
+    save_dir = f"checkpoint/dml_t{temperature:.1f}_n{num_nodes}/{i}_{model_name}"
     os.makedirs(save_dir, exist_ok=True)
     save_dirs.append(save_dir)
 
-    writer = SummaryWriter(f"runs/dml_t{temperature:.1f}/{i}_{model_name}")
+    writer = SummaryWriter(f"runs/dml_t{temperature:.1f}_n{num_nodes}/{i}_{model_name}")
     writers.append(writer)
 
     best_scores.append(0.0)
