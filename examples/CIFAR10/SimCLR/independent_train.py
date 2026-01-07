@@ -4,6 +4,7 @@ import time
 
 import torch
 import torchvision
+from dml import LARS, get_cosine_schedule_with_warmup
 from dml.utils import (AverageMeter, WorkerInitializer, save_checkpoint,
                        set_seed)
 from losses import SimCLRLoss
@@ -12,8 +13,6 @@ from models.simclr_model import SimCLR
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from transform import SimCLRTransforms
-from utils.optimizer import LARS
-from utils.scheduler import get_cosine_schedule_with_warmup
 
 parser = argparse.ArgumentParser(description="SimCLR Training on CIFAR-10")
 parser.add_argument("--seed", default=42, type=int, help="Random seed")
