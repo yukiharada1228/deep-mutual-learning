@@ -1,6 +1,4 @@
 data
-optuna
-runs
 checkpoint
 
 *.svg
