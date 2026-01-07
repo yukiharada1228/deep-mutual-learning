@@ -166,11 +166,11 @@ def evaluate_knn(
     test_features, test_labels = extract_features(model, test_loader, device)
 
     # Move to GPU for KNN computation if available
-    if device.type == "cuda":
-        train_features = train_features.cuda()
-        train_labels = train_labels.cuda()
-        test_features = test_features.cuda()
-        test_labels = test_labels.cuda()
+    if device.type == "cuda" or device.type == "mps":
+        train_features = train_features.to(device)
+        train_labels = train_labels.to(device)
+        test_features = test_features.to(device)
+        test_labels = test_labels.to(device)
 
     # Perform KNN classification
     print("  Running KNN classification...")
