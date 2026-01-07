@@ -17,9 +17,9 @@ from utils.scheduler import get_cosine_schedule_with_warmup
 
 parser = argparse.ArgumentParser(description="SimCLR Training on CIFAR-10")
 parser.add_argument("--seed", default=42, type=int, help="Random seed")
-parser.add_argument("--lr", default=0.3, type=float, help="Learning rate")
+parser.add_argument("--base-lr", default=0.5, type=float, help="Base learning rate")
 parser.add_argument("--batch-size", default=512, type=int, help="Batch size")
-parser.add_argument("--epochs", default=400, type=int, help="Number of epochs")
+parser.add_argument("--epochs", default=1000, type=int, help="Number of epochs")
 parser.add_argument("--warmup-epochs", default=10, type=int, help="Warmup epochs")
 parser.add_argument("--model", default="resnet18", type=str, help="Model name")
 parser.add_argument("--projection-dim", default=128, type=int, help="Projection dim")
@@ -42,9 +42,11 @@ parser.add_argument(
 
 args = parser.parse_args()
 manualSeed = int(args.seed)
-lr = float(args.lr)
-wd = float(args.wd)
+base_lr = float(args.base_lr)
 batch_size = args.batch_size
+# Learning rate scaling: lr = base_lr * batch_size / 256
+lr = base_lr * batch_size / 256
+wd = float(args.wd)
 max_epoch = args.epochs
 warmup_epochs = args.warmup_epochs
 model_name = args.model
@@ -59,7 +61,8 @@ print("=" * 60)
 print(f"SimCLR Training: {model_name}")
 print("=" * 60)
 print(f"Seed: {manualSeed}")
-print(f"Learning rate: {lr}")
+print(f"Base learning rate: {base_lr}")
+print(f"Learning rate (scaled): {lr}")
 print(f"Weight decay: {wd}")
 print(f"Batch size: {batch_size}")
 print(f"Epochs: {max_epoch}")
