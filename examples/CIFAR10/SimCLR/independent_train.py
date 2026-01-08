@@ -30,7 +30,7 @@ parser.add_argument(
     "--optimizer",
     default="lars",
     type=str,
-    choices=["lars", "sgd", "adam"],
+    choices=["lars", "sgd"],
     help="Optimizer",
 )
 parser.add_argument("--momentum", default=0.9, type=float, help="Momentum")
@@ -198,8 +198,6 @@ elif optimizer_type == "sgd":
         weight_decay=wd,
         nesterov=True,
     )
-else:  # adam
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
 
 num_training_steps = len(train_dataloader) * max_epoch
 num_warmup_steps = len(train_dataloader) * warmup_epochs
