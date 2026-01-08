@@ -112,7 +112,7 @@ class DoGoLoss(nn.Module):
         temperature: Temperature parameter for softmax scaling (default: 0.1).
     """
 
-    def __init__(self, temperature: float = 0.1, loss_weight: float = 100) -> None:
+    def __init__(self, temperature: float = 0.1, loss_weight: float = 1.0) -> None:
         super(DoGoLoss, self).__init__()
         self.temperature = temperature
         self.loss_weight = loss_weight
