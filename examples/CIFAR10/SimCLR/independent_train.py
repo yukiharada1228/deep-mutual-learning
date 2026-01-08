@@ -4,19 +4,19 @@ import time
 
 import torch
 import torchvision
-from dml import (LARS, CompositeLoss, build_links,
-                 get_cosine_schedule_with_warmup)
-from dml.utils import (AverageMeter, WorkerInitializer, save_checkpoint,
-                       set_seed)
-from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
-from torchvision import transforms
-
 from knn_eval import evaluate_knn
 from losses import SimCLRLoss
 from models import cifar_models
 from models.simclr_model import SimCLR
+from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+from torchvision import transforms
 from transform import SimCLRTransforms
+
+from dml import (LARS, CompositeLoss, build_links,
+                 get_cosine_schedule_with_warmup)
+from dml.utils import (AverageMeter, WorkerInitializer, save_checkpoint,
+                       set_seed)
 
 parser = argparse.ArgumentParser(description="SimCLR Training on CIFAR-10")
 parser.add_argument("--seed", default=42, type=int, help="Random seed")
@@ -129,21 +129,16 @@ num_classes = 10
 
 # Prepare KNN evaluation dataloaders (with standard transforms)
 if knn_eval_freq > 0:
-    # Normalization constants for CIFAR-10
-    mean = (0.4914, 0.4822, 0.4465)
-    std = (0.2470, 0.2435, 0.2616)
 
     knn_train_transform = transforms.Compose(
         [
             transforms.ToTensor(),
-            transforms.Normalize(mean, std),
         ]
     )
 
     knn_test_transform = transforms.Compose(
         [
             transforms.ToTensor(),
-            transforms.Normalize(mean, std),
         ]
     )
 
