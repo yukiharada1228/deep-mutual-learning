@@ -96,6 +96,50 @@ class SimCLRLoss(nn.Module):
         return loss
 
 
+class DisCOLoss(nn.Module):
+    """DisCO (Distilled Contrastive Learning) Loss for Knowledge Distillation.
+
+    Implements knowledge distillation using MSE loss between feature vectors
+    from two peer models. The loss measures the difference in features for
+    the same samples between target and source models.
+
+    Reference:
+        Gao et al. "DisCo: Remedy Self-supervised Learning on Lightweight
+        Models with Distilled Contrastive Learning." ECCV 2022.
+        https://arxiv.org/abs/2104.09124
+    """
+
+    def __init__(self):
+        super(DisCOLoss, self).__init__()
+        # Loss function
+        self.criterion = nn.MSELoss()
+
+    def forward(self, target_output, source_output):
+        """Compute DisCO distillation loss.
+
+        Args:
+            target_output: Tuple of (z1_target, z2_target) from target model.
+            source_output: Tuple of (z1_source, z2_source) from source model.
+
+        Returns:
+            MSE loss between target and source feature vectors.
+        """
+        # Feature vectors from target model
+        z1_m1 = target_output[0]
+        z2_m1 = target_output[1]
+        # Feature vectors from source model
+        z1_m2 = source_output[0].detach()
+        z2_m2 = source_output[1].detach()
+
+        # Knowledge transfer based on DisCO: difference in features for same samples
+        # Concatenate outputs -> [batch*2, dimension]
+        fvec_m1 = torch.cat((z1_m1, z2_m1), dim=0)
+        fvec_m2 = torch.cat((z1_m2, z2_m2), dim=0)
+        # Compute loss
+        loss = self.criterion(fvec_m1, fvec_m2.detach())
+        return loss
+
+
 class DoGoLoss(nn.Module):
     """DoGo (Distill on the Go) Loss for Online Knowledge Distillation.
 

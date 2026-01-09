@@ -41,6 +41,10 @@ This implementation is based on the following papers. I acknowledge and apprecia
   Prashant Bhat, Elahe Arani, and Bahram Zonooz.
   [arXiv:2104.09866](https://arxiv.org/abs/2104.09866)
 
+- **DisCo: Remedy Self-supervised Learning on Lightweight Models with Distilled Contrastive Learning**
+  Yuting Gao, Jia-Xin Zhuang, Shaohui Lin, Hao Cheng, Xing Sun, Ke Li, and Chunhua Shen.
+  [arXiv:2104.09124](https://arxiv.org/abs/2104.09124)
+
 - **Large Batch Training of Convolutional Networks (LARS)**
   Yang You, Igor Gitman, and Boris Ginsburg.
   [arXiv:1708.03888](https://arxiv.org/abs/1708.03888)

@@ -12,12 +12,12 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 
-from losses import DoGoLoss, SimCLRLoss
+from losses import DisCOLoss, SimCLRLoss
 from models import cifar_models
 from models.simclr_model import SimCLR
 from transform import SimCLRTransforms
 
-parser = argparse.ArgumentParser(description="SimCLR + DoGo on CIFAR-100")
+parser = argparse.ArgumentParser(description="SimCLR + DisCO on CIFAR-10")
 parser.add_argument("--seed", default=42, type=int, help="Random seed")
 parser.add_argument("--base-lr", default=0.5, type=float, help="Base learning rate")
 parser.add_argument("--batch-size", default=512, type=int, help="Batch size")
@@ -37,12 +37,6 @@ parser.add_argument(
     "--temperature", default=0.5, type=float, help="Temperature for SimCLR"
 )
 parser.add_argument(
-    "--dogo-temperature", default=0.1, type=float, help="Temperature for DoGo"
-)
-parser.add_argument(
-    "--loss-weight", default=1.0, type=float, help="Weight for DoGo loss"
-)
-parser.add_argument(
     "--color-jitter-strength", default=0.5, type=float, help="Color jitter strength"
 )
 parser.add_argument(
@@ -53,7 +47,7 @@ parser.add_argument(
     default=["resnet18", "resnet18"],
     nargs="+",
     type=str,
-    help="List of model names to train with SimCLR+DoGo",
+    help="List of model names to train with SimCLR+DisCO",
 )
 parser.add_argument(
     "--num-nodes",
@@ -86,8 +80,6 @@ projection_dim = args.projection_dim
 optimizer_type = args.optimizer
 momentum = args.momentum
 temperature = args.temperature
-dogo_temperature = args.dogo_temperature
-loss_weight = args.loss_weight
 color_jitter_strength = args.color_jitter_strength
 use_blur = args.use_blur
 num_nodes = args.num_nodes
@@ -103,7 +95,7 @@ elif len(models_name) != num_nodes:
     )
 
 print("=" * 60)
-print(f"SimCLR + DoGo Training with {num_nodes} models")
+print(f"SimCLR + DisCO Training with {num_nodes} models")
 print("=" * 60)
 print(f"Models: {models_name}")
 print(f"Seed: {manualSeed}")
@@ -115,8 +107,6 @@ print(f"Epochs: {max_epoch}")
 print(f"Warmup epochs: {warmup_epochs}")
 print(f"Optimizer: {optimizer_type}")
 print(f"SimCLR Temperature: {temperature}")
-print(f"DoGo Temperature: {dogo_temperature}")
-print(f"DoGo Loss Weight: {loss_weight}")
 print(f"Projection dim: {projection_dim}")
 print("=" * 60)
 print()
@@ -134,7 +124,7 @@ else:
 print(f"Using device: {device}")
 print()
 
-# Prepare the CIFAR-100 for training
+# Prepare the CIFAR-10 for training
 num_workers = 10
 
 train_transform = SimCLRTransforms(
@@ -143,7 +133,7 @@ train_transform = SimCLRTransforms(
     include_blur=use_blur,
 )
 
-train_dataset = torchvision.datasets.CIFAR100(
+train_dataset = torchvision.datasets.CIFAR10(
     root="data", train=True, download=True, transform=train_transform
 )
 
@@ -157,7 +147,7 @@ train_dataloader = DataLoader(
     worker_init_fn=WorkerInitializer(manualSeed).worker_init_fn,
 )
 
-num_classes = 100
+num_classes = 10
 
 # Prepare KNN evaluation dataloaders (with standard transforms)
 if knn_eval_freq > 0:
@@ -174,10 +164,10 @@ if knn_eval_freq > 0:
         ]
     )
 
-    knn_train_dataset = torchvision.datasets.CIFAR100(
+    knn_train_dataset = torchvision.datasets.CIFAR10(
         root="data", train=True, download=True, transform=knn_train_transform
     )
-    knn_test_dataset = torchvision.datasets.CIFAR100(
+    knn_test_dataset = torchvision.datasets.CIFAR10(
         root="data", train=False, download=True, transform=knn_test_transform
     )
 
@@ -264,11 +254,9 @@ for i, model_name in enumerate(models_name):
             )
             temperatures_list.append(None)
         else:
-            # Cross-link: DoGo loss (knowledge distillation)
-            criterions.append(
-                DoGoLoss(temperature=dogo_temperature, loss_weight=loss_weight)
-            )
-            temperatures_list.append(dogo_temperature)
+            # Cross-link: DisCO loss (knowledge distillation)
+            criterions.append(DisCOLoss())
+            temperatures_list.append(None)
 
     links = build_links(criterions, temperatures=temperatures_list)
     composite_loss = CompositeLoss(links)
@@ -277,17 +265,17 @@ for i, model_name in enumerate(models_name):
     # Print link configuration
     print(f"  Loss config for Model {i}:")
     for k, link in enumerate(links):
-        link_type = "Self (SimCLR)" if i == k else f"Node {k} → Node {i} (DoGo)"
+        link_type = "Self (SimCLR)" if i == k else f"Node {k} → Node {i} (DisCO)"
         temp_str = f"{link.temperature:.1f}" if link.temperature is not None else "N/A"
         print(f"    Link {k} ({link_type}): T={temp_str}")
 
     # Setup logging and checkpointing
-    save_dir = f"checkpoint/simclr_dogo_t{dogo_temperature:.1f}_w{loss_weight:.1f}_n{num_nodes}/{i}_{model_name}"
+    save_dir = f"checkpoint/simclr_disco_n{num_nodes}/{i}_{model_name}"
     os.makedirs(save_dir, exist_ok=True)
     save_dirs.append(save_dir)
 
     writer = SummaryWriter(
-        f"runs/simclr_dogo_t{dogo_temperature:.1f}_w{loss_weight:.1f}_n{num_nodes}/{i}_{model_name}"
+        f"runs/simclr_disco_n{num_nodes}/{i}_{model_name}"
     )
     writers.append(writer)
 
@@ -319,7 +307,7 @@ for epoch in range(1, max_epoch + 1):
             outputs.append((z1, z2))
 
         # Backward pass for each model
-        # Note: labels are not used for SimCLR/DoGo, but CompositeLoss expects them
+        # Note: labels are not used for SimCLR/DisCO, but CompositeLoss expects them
         labels = [None] * num_nodes
         for model_id in range(num_nodes):
             with torch.amp.autocast(device_type=device.type):
