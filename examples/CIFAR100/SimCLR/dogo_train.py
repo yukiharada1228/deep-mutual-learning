@@ -17,7 +17,7 @@ from models import cifar_models
 from models.simclr_model import SimCLR
 from transform import SimCLRTransforms
 
-parser = argparse.ArgumentParser(description="SimCLR + DoGo on CIFAR-10")
+parser = argparse.ArgumentParser(description="SimCLR + DoGo on CIFAR-100")
 parser.add_argument("--seed", default=42, type=int, help="Random seed")
 parser.add_argument("--base-lr", default=0.5, type=float, help="Base learning rate")
 parser.add_argument("--batch-size", default=512, type=int, help="Batch size")
@@ -134,7 +134,7 @@ else:
 print(f"Using device: {device}")
 print()
 
-# Prepare the CIFAR-10 for training
+# Prepare the CIFAR-100 for training
 num_workers = 10
 
 train_transform = SimCLRTransforms(
@@ -143,7 +143,7 @@ train_transform = SimCLRTransforms(
     include_blur=use_blur,
 )
 
-train_dataset = torchvision.datasets.CIFAR10(
+train_dataset = torchvision.datasets.CIFAR100(
     root="data", train=True, download=True, transform=train_transform
 )
 
@@ -157,7 +157,7 @@ train_dataloader = DataLoader(
     worker_init_fn=WorkerInitializer(manualSeed).worker_init_fn,
 )
 
-num_classes = 10
+num_classes = 100
 
 # Prepare KNN evaluation dataloaders (with standard transforms)
 if knn_eval_freq > 0:
@@ -174,10 +174,10 @@ if knn_eval_freq > 0:
         ]
     )
 
-    knn_train_dataset = torchvision.datasets.CIFAR10(
+    knn_train_dataset = torchvision.datasets.CIFAR100(
         root="data", train=True, download=True, transform=knn_train_transform
     )
-    knn_test_dataset = torchvision.datasets.CIFAR10(
+    knn_test_dataset = torchvision.datasets.CIFAR100(
         root="data", train=False, download=True, transform=knn_test_transform
     )
 
