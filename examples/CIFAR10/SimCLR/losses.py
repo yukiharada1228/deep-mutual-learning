@@ -119,7 +119,7 @@ class DoGoLoss(nn.Module):
         # Cosine similarity function (computes similarity along dim=2)
         self.similarity_fn = nn.CosineSimilarity(dim=2)
         # KL divergence loss with batch mean reduction
-        self.criterion = nn.KLDivLoss(reduction="mean")
+        self.criterion = nn.KLDivLoss(reduction="batchmean")
 
     def _compute_similarity_matrix(
         self, z1: torch.Tensor, z2: torch.Tensor
@@ -164,11 +164,5 @@ class DoGoLoss(nn.Module):
         # Source model: probabilities (teacher, detached from gradient)
         prob_source = F.softmax(sim_source.detach() / self.temperature, dim=-1)
 
-        # Compute KL divergence and scale by T² to compensate for gradient scaling
-        # (following Hinton et al., "Distilling the Knowledge in a Neural Network")
-        loss = (
-            self.loss_weight
-            * self.criterion(log_prob_target, prob_source)
-            * (self.temperature**2)
-        )
+        loss = self.loss_weight * self.criterion(log_prob_target, prob_source)
         return loss
