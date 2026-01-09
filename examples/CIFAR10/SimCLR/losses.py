@@ -112,7 +112,7 @@ class DoGoLoss(nn.Module):
         temperature: Temperature parameter for softmax scaling (default: 0.1).
     """
 
-    def __init__(self, temperature: float = 0.1, loss_weight: float = 1.0) -> None:
+    def __init__(self, temperature: float = 1.0, loss_weight: float = 1.0) -> None:
         super(DoGoLoss, self).__init__()
         self.temperature = temperature
         self.loss_weight = loss_weight
@@ -164,5 +164,5 @@ class DoGoLoss(nn.Module):
         # Source model: probabilities (teacher, detached from gradient)
         prob_source = F.softmax(sim_source.detach() / self.temperature, dim=-1)
 
-        loss = self.loss_weight * self.criterion(log_prob_target, prob_source)
+        loss = self.criterion(log_prob_target, prob_source) * (self.temperature**2)
         return loss

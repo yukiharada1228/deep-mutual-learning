@@ -37,7 +37,7 @@ parser.add_argument(
     "--temperature", default=0.5, type=float, help="Temperature for SimCLR"
 )
 parser.add_argument(
-    "--dogo-temperature", default=0.1, type=float, help="Temperature for DoGo"
+    "--dogo-temperature", default=1.0, type=float, help="Temperature for DoGo"
 )
 parser.add_argument(
     "--loss-weight", default=1.0, type=float, help="Weight for DoGo loss"
