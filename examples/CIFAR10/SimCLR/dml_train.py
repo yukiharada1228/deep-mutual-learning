@@ -278,11 +278,11 @@ def main():
             print(f"    Link {k} ({link_type}): T={temp_str}")
 
         # Setup logging and checkpointing
-        save_dir = f"checkpoint/simclr_disco_n{num_nodes}/{i}_{model_name}"
+        save_dir = f"checkpoint/dml_n{num_nodes}/{i}_{model_name}"
         os.makedirs(save_dir, exist_ok=True)
         save_dirs.append(save_dir)
 
-        writer = SummaryWriter(f"runs/simclr_disco_n{num_nodes}/{i}_{model_name}")
+        writer = SummaryWriter(f"runs/dml_n{num_nodes}/{i}_{model_name}")
         writers.append(writer)
 
     print()
