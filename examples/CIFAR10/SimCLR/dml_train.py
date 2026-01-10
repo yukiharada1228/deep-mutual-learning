@@ -317,9 +317,7 @@ def main():
             labels = [None] * num_nodes
             for model_id in range(num_nodes):
                 with torch.amp.autocast(device_type=device.type):
-                    loss = composite_losses[model_id](
-                        model_id, outputs, labels, epoch - 1
-                    )
+                    loss = composite_losses[model_id](model_id, outputs, labels)
 
                 # Optimization
                 scalers[model_id].scale(loss).backward()

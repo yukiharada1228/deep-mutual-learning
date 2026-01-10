@@ -164,7 +164,7 @@ def main():
             with torch.amp.autocast(device_type=device.type):
                 output = model(image)
                 # CompositeLoss expects list of outputs and labels, and model_id
-                loss = criterion(0, [output], [label], epoch)
+                loss = criterion(0, [output], [label])
 
             # Backward pass
             scaler.scale(loss).backward()

@@ -27,7 +27,6 @@ class DistillationLink(nn.Module):
         target_output,
         label,
         source_output=None,
-        epoch: int = 0,
     ):
         """
         Compute distillation loss.
@@ -36,7 +35,6 @@ class DistillationLink(nn.Module):
             target_output: Output logits from the target model
             label: Ground truth labels (used for self-link)
             source_output: Output logits from the source model (None for self-link)
-            epoch: Current epoch (for potential epoch-dependent behavior)
 
         Returns:
             Loss value (gate is checked via is_active() before calling this)
@@ -91,7 +89,7 @@ class CompositeLoss(nn.Module):
         super(CompositeLoss, self).__init__()
         self.incoming_links = nn.ModuleList(links)
 
-    def forward(self, model_id, outputs, labels, epoch):
+    def forward(self, model_id, outputs, labels):
         """
         Compute composite loss for a specific model.
 
@@ -99,7 +97,6 @@ class CompositeLoss(nn.Module):
             model_id: Index of the target model
             outputs: List of output logits from all models
             labels: List of labels for all models
-            epoch: Current epoch
 
         Returns:
             Combined loss (supervised + distillation)
@@ -108,13 +105,11 @@ class CompositeLoss(nn.Module):
         label = labels[model_id]
 
         # Supervised Loss (Self-link)
-        supervised_loss = self.incoming_links[model_id](
-            target_output, label, None, epoch
-        )
+        supervised_loss = self.incoming_links[model_id](target_output, label, None)
 
         # Distillation Loss (Cross-links)
         distillation_losses = [
-            link(target_output, None, outputs[i], epoch)
+            link(target_output, None, outputs[i])
             for i, link in enumerate(self.incoming_links)
             if i != model_id
         ]

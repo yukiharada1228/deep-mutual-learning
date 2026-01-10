@@ -301,7 +301,7 @@ def main():
                 labels = [None, None]  # Not used for SimCLR/DisCO
 
                 # Compute loss for Student (Node 0)
-                loss = composite_loss(0, outputs, labels, epoch - 1)
+                loss = composite_loss(0, outputs, labels)
 
             # Optimization
             scaler.scale(loss).backward()

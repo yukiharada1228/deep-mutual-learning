@@ -241,7 +241,7 @@ def main():
 
             with torch.amp.autocast(device_type=device.type):
                 # Model ID 0 = student
-                loss = composite_loss(0, outputs, labels, epoch - 1)
+                loss = composite_loss(0, outputs, labels)
 
             # Backward pass (student only)
             scaler.scale(loss).backward()

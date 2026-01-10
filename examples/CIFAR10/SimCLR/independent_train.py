@@ -240,9 +240,9 @@ def main():
             # Forward pass
             with torch.amp.autocast(device_type=device.type):
                 z1, z2 = model(view1, view2)
-                # CompositeLoss expects model_id, list of outputs, list of labels, and epoch
+                # CompositeLoss expects model_id, list of outputs, list of labels
                 # For SimCLR, we pass the projection outputs as a tuple
-                loss = criterion(0, [(z1, z2)], [None], epoch)
+                loss = criterion(0, [(z1, z2)], [None])
 
             # Backward pass
             scaler.scale(loss).backward()
