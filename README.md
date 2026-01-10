@@ -37,10 +37,6 @@ This implementation is based on the following papers. I acknowledge and apprecia
   Ting Chen, Simon Kornblith, Mohammad Norouzi, and Geoffrey Hinton.
   [arXiv:2002.05709](https://arxiv.org/abs/2002.05709)
 
-- **Distill on the Go: Online Knowledge Distillation in Self-Supervised Learning**
-  Prashant Bhat, Elahe Arani, and Bahram Zonooz.
-  [arXiv:2104.09866](https://arxiv.org/abs/2104.09866)
-
 - **DisCo: Remedy Self-supervised Learning on Lightweight Models with Distilled Contrastive Learning**
   Yuting Gao, Jia-Xin Zhuang, Shaohui Lin, Hao Cheng, Xing Sun, Ke Li, and Chunhua Shen.
   [arXiv:2104.09124](https://arxiv.org/abs/2104.09124)
