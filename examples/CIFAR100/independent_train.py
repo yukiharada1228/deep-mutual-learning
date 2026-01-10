@@ -5,14 +5,14 @@ import time
 import torch
 import torch.nn as nn
 import torchvision
-from models import cifar_models
+from dml import CompositeLoss, build_links
+from dml.utils import (AverageMeter, WorkerInitializer, accuracy,
+                       save_checkpoint, set_seed)
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 
-from dml import CompositeLoss, build_links
-from dml.utils import (AverageMeter, WorkerInitializer, accuracy,
-                       save_checkpoint, set_seed)
+from models import cifar_models
 
 
 def main():

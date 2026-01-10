@@ -5,18 +5,20 @@ import time
 import torch
 import torch.nn as nn
 import torchvision
-from models import cifar_models
+from dml import CompositeLoss, build_links
+from dml.utils import (AverageMeter, WorkerInitializer, accuracy,
+                       save_checkpoint, set_seed)
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 
-from dml import CompositeLoss, build_links
-from dml.utils import (AverageMeter, WorkerInitializer, accuracy,
-                       save_checkpoint, set_seed)
+from models import cifar_models
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Deep Mutual Learning (DML) on CIFAR-100")
+    parser = argparse.ArgumentParser(
+        description="Deep Mutual Learning (DML) on CIFAR-100"
+    )
     parser.add_argument("--seed", default=42, type=int, help="Random seed")
     parser.add_argument("--lr", default=0.1, type=float, help="Learning rate")
     parser.add_argument("--wd", default=5e-4, type=float, help="Weight decay")
@@ -193,7 +195,9 @@ def main():
         print(f"  Loss config for Model {i}:")
         for k, link in enumerate(links):
             link_type = "Self (supervised)" if i == k else f"Node {k} → Node {i} (KD)"
-            temp_str = f"{link.temperature:.1f}" if link.temperature is not None else "N/A"
+            temp_str = (
+                f"{link.temperature:.1f}" if link.temperature is not None else "N/A"
+            )
             print(f"    Link {k} ({link_type}): T={temp_str}")
 
         # Setup logging and checkpointing
@@ -202,7 +206,9 @@ def main():
         os.makedirs(save_dir, exist_ok=True)
         save_dirs.append(save_dir)
 
-        writer = SummaryWriter(f"runs/dml_t{temperature:.1f}_n{num_nodes}/{i}_{model_name}")
+        writer = SummaryWriter(
+            f"runs/dml_t{temperature:.1f}_n{num_nodes}/{i}_{model_name}"
+        )
         writers.append(writer)
 
         best_scores.append(0.0)
@@ -238,7 +244,9 @@ def main():
             labels = [label] * num_nodes
             for model_id in range(num_nodes):
                 with torch.amp.autocast(device_type=device.type):
-                    loss = composite_losses[model_id](model_id, outputs, labels, epoch - 1)
+                    loss = composite_losses[model_id](
+                        model_id, outputs, labels, epoch - 1
+                    )
 
                 # Optimization
                 scalers[model_id].scale(loss).backward()
