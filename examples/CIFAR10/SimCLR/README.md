@@ -15,10 +15,12 @@ Base encoder trained individually without any knowledge transfer using SimCLR.
 | ResNet18 | **89.68%** | **98.88%** |
 | ResNet50 | **91.15%** | **99.09%** |
 
-## 2. SimCLR with Deep Mutual Learning (DML)
+## 2. SimCLR with DisCO (Distillation with Contrastive Learning)
 
-Coming soon.
+Knowledge distillation from ResNet50 (teacher) to ResNet18 (student) using contrastive learning.
 
-## 3. SimCLR with DisCO (Distillation with Contrastive Learning)
+| Student Model | Teacher Model | KNN Top-1 Accuracy | KNN Top-5 Accuracy | Improvement vs Baseline |
+|---------------|---------------|-------------------:|-------------------:|------------------------:|
+| ResNet18 | ResNet50 | **90.09%** | **98.82%** | **+0.41%** |
 
-Coming soon.
+The DisCO approach improves ResNet18's performance from 89.68% (independent) to 90.09% by learning from the ResNet50 teacher model, demonstrating effective knowledge transfer through contrastive distillation.
