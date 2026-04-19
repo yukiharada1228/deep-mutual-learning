@@ -16,7 +16,7 @@ class DistillationLink(nn.Module):
     def __init__(
         self,
         criterion: nn.Module,
-        temperature: float = 1.0,
+        temperature: float | None = 1.0,
     ):
         super(DistillationLink, self).__init__()
         self.criterion = criterion
@@ -56,9 +56,52 @@ class DistillationLink(nn.Module):
             return self.criterion(target_output, source_output)
 
 
+class CompositeLoss(nn.Module):
+    """
+    Composite loss for multi-node knowledge distillation.
+
+    Combines supervised loss (self-link) and distillation losses (cross-links).
+    """
+
+    def __init__(self, model_id: int, links: list[DistillationLink]):
+        super(CompositeLoss, self).__init__()
+        self.model_id = model_id
+        self.incoming_links = nn.ModuleList(links)
+
+    def forward(self, outputs, label):
+        """
+        Compute composite loss for the bound model.
+
+        Args:
+            outputs: List of output logits from all models
+            label: Ground truth labels (shared across all nodes)
+
+        Returns:
+            Combined loss (supervised + distillation)
+        """
+        target_output = outputs[self.model_id]
+
+        # Supervised Loss (Self-link)
+        supervised_loss = self.incoming_links[self.model_id](target_output, label, None)
+
+        # Distillation Loss (Cross-links)
+        distillation_losses = [
+            link(target_output, None, outputs[i])
+            for i, link in enumerate(self.incoming_links)
+            if i != self.model_id
+        ]
+
+        if distillation_losses:
+            distillation_loss_mean = torch.stack(distillation_losses).mean()
+        else:
+            distillation_loss_mean = torch.zeros_like(supervised_loss)
+
+        return supervised_loss + distillation_loss_mean
+
+
 def build_links(
     criterions: list[nn.Module],
-    temperatures: list[float] = None,
+    temperatures: list[float] | None = None,
 ) -> list[DistillationLink]:
     """
     Build a list of DistillationLink instances.
@@ -78,45 +121,39 @@ def build_links(
     return [DistillationLink(c, t) for c, t in zip(criterions, temperatures)]
 
 
-class CompositeLoss(nn.Module):
+def build_mutual_learning_losses(
+    num_nodes: int,
+    temperature: float = 1.0,
+    supervised_factory=None,
+    distillation_factory=None,
+) -> list[CompositeLoss]:
     """
-    Composite loss for multi-node knowledge distillation.
+    Build one CompositeLoss per node for symmetric deep mutual learning.
 
-    Combines supervised loss (self-link) and distillation losses (cross-links).
+    Args:
+        num_nodes: Number of mutually learning nodes.
+        temperature: Distillation temperature for cross-links.
+        supervised_factory: Optional callable returning the self-link criterion.
+        distillation_factory: Optional callable returning the cross-link criterion.
+
+    Returns:
+        List of CompositeLoss instances, one per target node.
     """
+    if supervised_factory is None:
+        supervised_factory = lambda: nn.CrossEntropyLoss(reduction="mean")
+    if distillation_factory is None:
+        distillation_factory = lambda: nn.KLDivLoss(reduction="batchmean")
 
-    def __init__(self, links: list[DistillationLink]):
-        super(CompositeLoss, self).__init__()
-        self.incoming_links = nn.ModuleList(links)
-
-    def forward(self, model_id, outputs, labels):
-        """
-        Compute composite loss for a specific model.
-
-        Args:
-            model_id: Index of the target model
-            outputs: List of output logits from all models
-            labels: List of labels for all models
-
-        Returns:
-            Combined loss (supervised + distillation)
-        """
-        target_output = outputs[model_id]
-        label = labels[model_id]
-
-        # Supervised Loss (Self-link)
-        supervised_loss = self.incoming_links[model_id](target_output, label, None)
-
-        # Distillation Loss (Cross-links)
-        distillation_losses = [
-            link(target_output, None, outputs[i])
-            for i, link in enumerate(self.incoming_links)
-            if i != model_id
-        ]
-
-        if distillation_losses:
-            distillation_loss_mean = torch.stack(distillation_losses).mean()
-        else:
-            distillation_loss_mean = torch.zeros_like(supervised_loss)
-
-        return supervised_loss + distillation_loss_mean
+    losses = []
+    for target_index in range(num_nodes):
+        criterions = []
+        temperatures = []
+        for source_index in range(num_nodes):
+            if target_index == source_index:
+                criterions.append(supervised_factory())
+                temperatures.append(None)
+            else:
+                criterions.append(distillation_factory())
+                temperatures.append(temperature)
+        losses.append(CompositeLoss(target_index, build_links(criterions, temperatures)))
+    return losses
