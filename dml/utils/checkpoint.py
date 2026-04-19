@@ -12,7 +12,7 @@ def save_checkpoint(model, save_dir, epoch, filename=None):
     if filename:
         path = os.path.join(save_dir, filename)
     else:
-        path = os.path.join(save_dir, "checkpoint_epoch_%d.pkl" % epoch)
+        path = os.path.join(save_dir, "checkpoint_epoch_%d.pth" % epoch)
     torch.save(state, path)
 
 

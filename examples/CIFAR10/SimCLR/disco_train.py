@@ -326,7 +326,7 @@ def main():
             student_model,
             save_dir,
             epoch,
-            filename="latest_checkpoint.pkl",
+            filename="latest_checkpoint.pth",
         )
 
         # KNN Evaluation

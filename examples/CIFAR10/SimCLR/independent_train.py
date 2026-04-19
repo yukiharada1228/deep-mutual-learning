@@ -263,7 +263,7 @@ def main():
 
         print(f"  Train: loss={train_loss:.4f}, lr={lr_current:.6f}")
 
-        save_checkpoint(model, save_dir, epoch, filename="latest_checkpoint.pkl")
+        save_checkpoint(model, save_dir, epoch, filename="latest_checkpoint.pth")
 
         # KNN evaluation
         if knn_eval_freq > 0 and (epoch % knn_eval_freq == 0 or epoch == max_epoch):
