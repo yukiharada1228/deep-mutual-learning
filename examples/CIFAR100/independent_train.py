@@ -31,7 +31,7 @@ def main():
     parser.add_argument("--wd", default=5e-4, type=float, help="Weight decay")
     parser.add_argument("--batch-size", default=64, type=int, help="Batch size")
     parser.add_argument("--epochs", default=200, type=int, help="Number of epochs")
-    parser.add_argument("--model", default="resnet20", type=str, help="Model name")
+    parser.add_argument("--model", default="resnet32", type=str, help="Model name")
 
     args = parser.parse_args()
     manualSeed = int(args.seed)

@@ -38,7 +38,7 @@ def main():
     parser.add_argument("--epochs", default=200, type=int, help="Number of epochs")
     parser.add_argument(
         "--models",
-        default=["resnet20"],
+        default=["resnet32"],
         nargs="+",
         type=str,
         help="List of model names to train with DML",
