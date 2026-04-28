@@ -14,7 +14,7 @@ class EpochState:
     elapsed_time: float
 
 
-class DMLCallback:
+class Callback:
     def on_train_begin(self, session):
         pass
 
@@ -25,7 +25,7 @@ class DMLCallback:
         pass
 
 
-class TensorBoardCallback(DMLCallback):
+class TensorBoardCallback(Callback):
     def __init__(self, writers: list[Any]):
         self.writers = writers
 
@@ -41,15 +41,18 @@ class TensorBoardCallback(DMLCallback):
             writer.close()
 
 
-class CheckpointCallback(DMLCallback):
-    def __init__(self, save_dirs: list[str]):
+class CheckpointCallback(Callback):
+    def __init__(self, save_dirs: list[str | None]):
         self.save_dirs = save_dirs
 
     def on_epoch_end(self, session, state: EpochState):
         for model_id, node in enumerate(session):
+            save_dir = self.save_dirs[model_id]
+            if save_dir is None:
+                continue
             save_checkpoint(
                 node.model,
-                self.save_dirs[model_id],
+                save_dir,
                 state.epoch,
                 filename="latest_checkpoint.pth",
             )
