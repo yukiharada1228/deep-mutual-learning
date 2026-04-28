@@ -5,7 +5,7 @@ from typing import Callable
 import torch
 
 from .callbacks import Callback, EpochState
-from .session import Session
+from .graph import Graph
 from .utils import AverageMeter
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class Trainer:
     def __init__(
         self,
-        session: Session,
+        session: Graph,
         device: torch.device,
         score_fn: Callable[[torch.Tensor, torch.Tensor], float],
         callbacks: list[Callback] | None = None,

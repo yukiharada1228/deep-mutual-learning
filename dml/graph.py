@@ -26,30 +26,36 @@ class Edge:
     Example::
 
         # DML: 2 mutual students
-        session = Session(
+        graph = Graph(
             nodes,
-            Edge(None, 0, nn.CrossEntropyLoss()),
-            Edge(None, 1, nn.CrossEntropyLoss()),
-            Edge(0, 1, nn.KLDivLoss(reduction="batchmean")),
-            Edge(1, 0, nn.KLDivLoss(reduction="batchmean")),
+            [
+                Edge(None, 0, nn.CrossEntropyLoss()),
+                Edge(None, 1, nn.CrossEntropyLoss()),
+                Edge(0, 1, nn.KLDivLoss(reduction="batchmean")),
+                Edge(1, 0, nn.KLDivLoss(reduction="batchmean")),
+            ],
         )
 
         # KD: node 0 is a frozen teacher (no incoming edges)
-        session = Session(
+        graph = Graph(
             nodes,
-            Edge(None, 1, nn.CrossEntropyLoss()),
-            Edge(0, 1, nn.KLDivLoss(reduction="batchmean"), temperature=4.0),
+            [
+                Edge(None, 1, nn.CrossEntropyLoss()),
+                Edge(0, 1, nn.KLDivLoss(reduction="batchmean"), temperature=4.0),
+            ],
         )
 
         # hybrid: node 0 teacher, nodes 1 and 2 do mutual learning
-        session = Session(
+        graph = Graph(
             nodes,
-            Edge(None, 1, nn.CrossEntropyLoss()),
-            Edge(None, 2, nn.CrossEntropyLoss()),
-            Edge(0, 1, nn.KLDivLoss(reduction="batchmean"), temperature=4.0),
-            Edge(0, 2, nn.KLDivLoss(reduction="batchmean"), temperature=4.0),
-            Edge(1, 2, nn.KLDivLoss(reduction="batchmean")),
-            Edge(2, 1, nn.KLDivLoss(reduction="batchmean")),
+            [
+                Edge(None, 1, nn.CrossEntropyLoss()),
+                Edge(None, 2, nn.CrossEntropyLoss()),
+                Edge(0, 1, nn.KLDivLoss(reduction="batchmean"), temperature=4.0),
+                Edge(0, 2, nn.KLDivLoss(reduction="batchmean"), temperature=4.0),
+                Edge(1, 2, nn.KLDivLoss(reduction="batchmean")),
+                Edge(2, 1, nn.KLDivLoss(reduction="batchmean")),
+            ],
         )
     """
 
@@ -101,3 +107,59 @@ class Node:
 
     def step_scheduler(self):
         self.scheduler.step()
+
+
+class Graph:
+    def __init__(self, nodes: list[Node], edges: list[Edge]):
+        self.nodes = nodes
+        self.edges = edges
+        self._targets = {e.target for e in edges}
+
+    def __iter__(self):
+        return iter(self.nodes)
+
+    def __len__(self) -> int:
+        return len(self.nodes)
+
+    def is_teacher(self, i: int) -> bool:
+        return i not in self._targets
+
+    def train_all(self):
+        for i, node in enumerate(self.nodes):
+            node.model.eval() if self.is_teacher(i) else node.model.train()
+
+    def eval_all(self):
+        for node in self.nodes:
+            node.model.eval()
+
+    def forward_all(self, image: torch.Tensor, device_type: str) -> list[torch.Tensor]:
+        outputs = []
+        for i, node in enumerate(self.nodes):
+            if self.is_teacher(i):
+                with torch.no_grad():
+                    outputs.append(node.forward(image, device_type))
+            else:
+                outputs.append(node.forward(image, device_type))
+        return outputs
+
+    def compute_losses(
+        self,
+        outputs: list[torch.Tensor],
+        label: torch.Tensor,
+    ) -> list[torch.Tensor | None]:
+        losses: list[torch.Tensor | None] = [None] * len(self.nodes)
+        for edge in self.edges:
+            edge_loss = edge.compute(outputs, label)
+            i = edge.target
+            losses[i] = edge_loss if losses[i] is None else losses[i] + edge_loss
+        return losses
+
+    def optimize_all(self, losses: list[torch.Tensor | None]):
+        for node, loss in zip(self.nodes, losses):
+            if loss is not None:
+                node.optimize(loss)
+
+    def step_schedulers(self):
+        for i, node in enumerate(self.nodes):
+            if not self.is_teacher(i) and node.scheduler is not None:
+                node.step_scheduler()

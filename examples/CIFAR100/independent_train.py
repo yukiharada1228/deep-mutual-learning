@@ -8,7 +8,7 @@ from training_utils import (CIFAR100_NUM_CLASSES, create_cifar100_dataloaders,
                             create_grad_scaler, create_model, create_optimizer,
                             create_scheduler, get_device)
 
-from dml import (CheckpointCallback, Edge, Node, Session, TensorBoardCallback,
+from dml import (CheckpointCallback, Edge, Node, Graph, TensorBoardCallback,
                  Trainer)
 from dml.utils import accuracy, set_seed
 
@@ -36,7 +36,7 @@ def main():
         seed=args.seed,
     )
 
-    model, _ = create_model(
+    model = create_model(
         model_name=args.model, device=device, num_classes=CIFAR100_NUM_CLASSES
     )
     optimizer = create_optimizer(model, lr=args.lr, wd=args.wd)
@@ -46,9 +46,9 @@ def main():
     save_dir = f"checkpoint/independent/{args.model}"
     os.makedirs(save_dir, exist_ok=True)
 
-    session = Session(
+    session = Graph(
         [Node(model=model, optimizer=optimizer, scheduler=scheduler, scaler=scaler)],
-        Edge(None, 0, nn.CrossEntropyLoss()),
+        [Edge(None, 0, nn.CrossEntropyLoss())],
     )
     Trainer(
         session=session,

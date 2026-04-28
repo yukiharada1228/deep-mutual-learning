@@ -8,7 +8,7 @@ from training_utils import (CIFAR100_NUM_CLASSES, create_cifar100_dataloaders,
                             create_grad_scaler, create_model, create_optimizer,
                             create_scheduler, get_device)
 
-from dml import (CheckpointCallback, Edge, Node, Session, TensorBoardCallback,
+from dml import (CheckpointCallback, Edge, Node, Graph, TensorBoardCallback,
                  Trainer)
 from dml.utils import accuracy, set_seed
 
@@ -68,7 +68,7 @@ def main():
     save_dirs = []
 
     for i, model_name in enumerate(models_name):
-        model, _ = create_model(
+        model = create_model(
             model_name=model_name, device=device, num_classes=CIFAR100_NUM_CLASSES
         )
         optimizer = create_optimizer(model, lr=args.lr, wd=args.wd)
@@ -86,15 +86,17 @@ def main():
             Node(model=model, optimizer=optimizer, scheduler=scheduler, scaler=scaler)
         )
 
-    session = Session(
+    session = Graph(
         nodes,
-        *(Edge(None, i, nn.CrossEntropyLoss()) for i in range(num_nodes)),
-        *(
-            Edge(src, tgt, nn.KLDivLoss(reduction="batchmean"), temperature)
-            for src in range(num_nodes)
-            for tgt in range(num_nodes)
-            if src != tgt
-        ),
+        [
+            *[Edge(None, i, nn.CrossEntropyLoss()) for i in range(num_nodes)],
+            *[
+                Edge(src, tgt, nn.KLDivLoss(reduction="batchmean"), temperature)
+                for src in range(num_nodes)
+                for tgt in range(num_nodes)
+                if src != tgt
+            ],
+        ],
     )
     Trainer(
         session=session,

@@ -9,7 +9,7 @@ from training_utils import (CIFAR100_NUM_CLASSES, create_cifar100_dataloaders,
                             create_grad_scaler, create_model, create_optimizer,
                             create_scheduler, get_device)
 
-from dml import (CheckpointCallback, Edge, Node, Session, TensorBoardCallback,
+from dml import (CheckpointCallback, Edge, Node, Graph, TensorBoardCallback,
                  Trainer)
 from dml.utils import accuracy, set_seed
 
@@ -73,7 +73,7 @@ def main():
     save_dirs = []
 
     for i, name in enumerate(args.teachers):
-        model, _ = create_model(name, device, CIFAR100_NUM_CLASSES)
+        model = create_model(name, device, CIFAR100_NUM_CLASSES)
         if args.teacher_checkpoints:
             ckpt = torch.load(args.teacher_checkpoints[i], map_location=device)
             model.load_state_dict(ckpt.get("model_state_dict", ckpt))
@@ -85,7 +85,7 @@ def main():
         save_dirs.append(None)
 
     for i, name in enumerate(args.students):
-        model, _ = create_model(name, device, CIFAR100_NUM_CLASSES)
+        model = create_model(name, device, CIFAR100_NUM_CLASSES)
         optimizer = create_optimizer(model, lr=args.lr, wd=args.wd)
         scheduler = create_scheduler(optimizer, max_epoch=args.epochs)
         scaler = create_grad_scaler(device)
@@ -99,22 +99,16 @@ def main():
         writers.append(SummaryWriter(f"runs/kd_t{args.temperature:.1f}/{i}_{name}"))
         save_dirs.append(save_dir)
 
-    session = Session(
+    session = Graph(
         nodes,
-        *(
-            Edge(None, num_teachers + i, nn.CrossEntropyLoss())
-            for i in range(num_students)
-        ),
-        *(
-            Edge(
-                t,
-                num_teachers + s,
-                nn.KLDivLoss(reduction="batchmean"),
-                args.temperature,
-            )
-            for t in range(num_teachers)
-            for s in range(num_students)
-        ),
+        [
+            *[Edge(None, num_teachers + i, nn.CrossEntropyLoss()) for i in range(num_students)],
+            *[
+                Edge(t, num_teachers + s, nn.KLDivLoss(reduction="batchmean"), args.temperature)
+                for t in range(num_teachers)
+                for s in range(num_students)
+            ],
+        ],
     )
     Trainer(
         session=session,

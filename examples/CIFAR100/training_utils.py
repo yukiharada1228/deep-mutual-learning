@@ -82,9 +82,7 @@ def create_model(
     device: torch.device,
     num_classes: int = CIFAR100_NUM_CLASSES,
 ):
-    model = getattr(cifar_models, model_name)(num_classes).to(device)
-    model_params = sum(p.numel() for p in model.parameters())
-    return model, model_params
+    return getattr(cifar_models, model_name)(num_classes).to(device)
 
 
 def create_optimizer(model: torch.nn.Module, lr: float, wd: float):
