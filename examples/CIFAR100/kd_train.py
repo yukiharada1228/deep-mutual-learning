@@ -65,48 +65,45 @@ def main():
         seed=args.seed,
     )
 
-    num_teachers = len(args.teachers)
-    num_students = len(args.students)
-
-    nodes = []
-    writers = []
-    save_dirs = []
-
+    teacher_nodes, teacher_writers = [], []
     for i, name in enumerate(args.teachers):
         model = create_model(name, device, CIFAR100_NUM_CLASSES)
         if args.teacher_checkpoints:
             ckpt = torch.load(args.teacher_checkpoints[i], map_location=device)
             model.load_state_dict(ckpt.get("model_state_dict", ckpt))
-
-        nodes.append(Node(model=model))
-        writers.append(
+        teacher_nodes.append(Node(model=model))
+        teacher_writers.append(
             SummaryWriter(f"runs/kd_t{args.temperature:.1f}/teacher_{i}_{name}")
         )
-        save_dirs.append(None)
 
+    student_nodes, student_writers, student_save_dirs = [], [], []
     for i, name in enumerate(args.students):
         model = create_model(name, device, CIFAR100_NUM_CLASSES)
         optimizer = create_optimizer(model, lr=args.lr, wd=args.wd)
         scheduler = create_scheduler(optimizer, max_epoch=args.epochs)
         scaler = create_grad_scaler(device)
-
         save_dir = f"checkpoint/kd_t{args.temperature:.1f}/{i}_{name}"
         os.makedirs(save_dir, exist_ok=True)
-
-        nodes.append(
+        student_nodes.append(
             Node(model=model, optimizer=optimizer, scheduler=scheduler, scaler=scaler)
         )
-        writers.append(SummaryWriter(f"runs/kd_t{args.temperature:.1f}/{i}_{name}"))
-        save_dirs.append(save_dir)
+        student_writers.append(
+            SummaryWriter(f"runs/kd_t{args.temperature:.1f}/{i}_{name}")
+        )
+        student_save_dirs.append(save_dir)
+
+    nodes = teacher_nodes + student_nodes
+    teacher_idx = range(len(teacher_nodes))
+    student_idx = range(len(teacher_nodes), len(nodes))
 
     session = Graph(
         nodes,
         [
-            *[Edge(None, num_teachers + i, nn.CrossEntropyLoss()) for i in range(num_students)],
+            *[Edge(None, s, nn.CrossEntropyLoss()) for s in student_idx],
             *[
-                Edge(t, num_teachers + s, nn.KLDivLoss(reduction="batchmean"), args.temperature)
-                for t in range(num_teachers)
-                for s in range(num_students)
+                Edge(t, s, nn.KLDivLoss(reduction="batchmean"), args.temperature)
+                for t in teacher_idx
+                for s in student_idx
             ],
         ],
     )
@@ -115,8 +112,8 @@ def main():
         device=device,
         score_fn=lambda output, target: accuracy(output, target, topk=(1,))[0].item(),
         callbacks=[
-            TensorBoardCallback(writers),
-            CheckpointCallback(save_dirs),
+            TensorBoardCallback(teacher_writers + student_writers),
+            CheckpointCallback([None] * len(teacher_nodes) + student_save_dirs),
         ],
     ).fit(train_dataloader, val_dataloader, epochs=args.epochs)
 

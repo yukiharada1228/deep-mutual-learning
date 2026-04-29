@@ -16,32 +16,32 @@ from training_utils import (
 from dml import Callback, Edge, EpochState, Graph, Node, Trainer
 from dml.utils import accuracy, set_seed
 
-def build_graph(trial, target_model, models, device, lr, wd, temperature, epochs):
-    num_nodes = trial.suggest_int("num_nodes", 1, 1 + len(models))
+
+def build_graph(trial, args, device):
+    num_nodes = trial.suggest_int("num_nodes", 1, 1 + len(args.models))
     nodes = []
 
-    model = create_model(target_model, device, CIFAR100_NUM_CLASSES)
-    optimizer = create_optimizer(model, lr=lr, wd=wd)
+    model = create_model(args.model, device, CIFAR100_NUM_CLASSES)
+    optimizer = create_optimizer(model, lr=args.lr, wd=args.wd)
     nodes.append(Node(
         model=model,
         optimizer=optimizer,
-        scheduler=create_scheduler(optimizer, max_epoch=epochs),
+        scheduler=create_scheduler(optimizer, max_epoch=args.epochs),
         scaler=create_grad_scaler(device),
     ))
 
     for i in range(1, num_nodes):
-        model_name = trial.suggest_categorical(f"model_{i}", models)
+        model_name = trial.suggest_categorical(f"model_{i}", args.models)
         model = create_model(model_name, device, CIFAR100_NUM_CLASSES)
-        optimizer = create_optimizer(model, lr=lr, wd=wd)
+        optimizer = create_optimizer(model, lr=args.lr, wd=args.wd)
         nodes.append(Node(
             model=model,
             optimizer=optimizer,
-            scheduler=create_scheduler(optimizer, max_epoch=epochs),
+            scheduler=create_scheduler(optimizer, max_epoch=args.epochs),
             scaler=create_grad_scaler(device),
         ))
 
     edges = []
-
     for i in range(num_nodes):
         if trial.suggest_categorical(f"label_edge_{i}", [True, False]):
             edges.append(Edge(None, i, nn.CrossEntropyLoss()))
@@ -51,7 +51,7 @@ def build_graph(trial, target_model, models, device, lr, wd, temperature, epochs
             if src == tgt:
                 continue
             if trial.suggest_categorical(f"peer_{src}_{tgt}", [True, False]):
-                edges.append(Edge(src, tgt, nn.KLDivLoss(reduction="batchmean"), temperature))
+                edges.append(Edge(src, tgt, nn.KLDivLoss(reduction="batchmean"), args.temperature))
 
     if not any(e.target == 0 for e in edges):
         raise optuna.TrialPruned()
@@ -64,9 +64,9 @@ def main():
         description="Optuna search for model/loss configurations on CIFAR-100"
     )
     parser.add_argument("--model", default="resnet32", type=str)
-    parser.add_argument("--lr", default=0.1, type=float, help="Learning rate")
-    parser.add_argument("--wd", default=5e-4, type=float, help="Weight decay")
-    parser.add_argument("--temperature", default=1.0, type=float, help="Distillation temperature")
+    parser.add_argument("--lr", default=0.1, type=float)
+    parser.add_argument("--wd", default=5e-4, type=float)
+    parser.add_argument("--temperature", default=1.0, type=float)
     parser.add_argument("--models", default=["resnet32", "resnet110", "wideresnet28_2"], nargs="+", type=str, help="Model pool for extra nodes")
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--batch-size", default=64, type=int)
@@ -89,13 +89,14 @@ def main():
     )
 
     def objective(trial):
-        graph = build_graph(trial, args.model, args.models, device, args.lr, args.wd, args.temperature, args.epochs)
-        best = [0.0]
+        graph = build_graph(trial, args, device)
+        best = 0.0
 
         class PruningCallback(Callback):
             def on_epoch_end(self, _, state: EpochState):
+                nonlocal best
                 score = state.val_scores[0]
-                best[0] = max(best[0], score)
+                best = max(best, score)
                 trial.report(score, state.epoch)
                 if trial.should_prune():
                     raise optuna.TrialPruned()
@@ -107,7 +108,7 @@ def main():
             callbacks=[PruningCallback()],
         ).fit(train_loader, val_loader, epochs=args.epochs)
 
-        return best[0]
+        return best
 
     study = optuna.create_study(
         study_name=args.study_name,
