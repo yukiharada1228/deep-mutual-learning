@@ -1,6 +1,4 @@
 data
-checkpoint
-optuna.db
 
 *.svg
 *.pdf
