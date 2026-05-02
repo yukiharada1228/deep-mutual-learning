@@ -8,7 +8,7 @@ from training_utils import (CIFAR100_NUM_CLASSES, create_cifar100_dataloaders,
                             create_grad_scaler, create_model, create_optimizer,
                             create_scheduler, get_device)
 
-from dml import (CheckpointCallback, Edge, Node, Graph, TensorBoardCallback,
+from dml import (CheckpointCallback, Edge, Graph, Node, TensorBoardCallback,
                  Trainer)
 from dml.utils import accuracy, set_seed
 
@@ -65,7 +65,9 @@ def main():
 
     nodes, writers, save_dirs = [], [], []
     for i, name in enumerate(model_names):
-        model = create_model(model_name=name, device=device, num_classes=CIFAR100_NUM_CLASSES)
+        model = create_model(
+            model_name=name, device=device, num_classes=CIFAR100_NUM_CLASSES
+        )
         optimizer = create_optimizer(model, lr=args.lr, wd=args.wd)
         scheduler = create_scheduler(optimizer, max_epoch=args.epochs)
         scaler = create_grad_scaler(device)
@@ -73,8 +75,12 @@ def main():
         save_dir = f"checkpoint/dml_t{temperature:.1f}_n{num_nodes}/{i}_{name}"
         os.makedirs(save_dir, exist_ok=True)
 
-        nodes.append(Node(model=model, optimizer=optimizer, scheduler=scheduler, scaler=scaler))
-        writers.append(SummaryWriter(f"runs/dml_t{temperature:.1f}_n{num_nodes}/{i}_{name}"))
+        nodes.append(
+            Node(model=model, optimizer=optimizer, scheduler=scheduler, scaler=scaler)
+        )
+        writers.append(
+            SummaryWriter(f"runs/dml_t{temperature:.1f}_n{num_nodes}/{i}_{name}")
+        )
         save_dirs.append(save_dir)
 
     session = Graph(
