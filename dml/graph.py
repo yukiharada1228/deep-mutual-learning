@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 
 import torch
@@ -11,17 +12,17 @@ class Edge:
     """
     A directed edge in the learning graph.
 
-    ``source=None`` denotes a **label edge** (ŷ → target): the criterion is
+    ``source=None`` denotes a **supervision edge** (ŷ → target): the criterion is
     applied directly to the node's output and the ground-truth label.
 
-    ``source=<int>`` denotes a **peer edge** (source → target): the criterion
+    ``source=<int>`` denotes a **distillation edge** (source → target): the criterion
     receives temperature-scaled log-softmax / softmax of the two nodes' outputs.
 
     Args:
-        source:      Index of the source node, or ``None`` for a label edge.
+        source:      Index of the source node, or ``None`` for a supervision edge.
         target:      Index of the target node.
         criterion:   Loss function for this edge.
-        temperature: Softmax temperature (peer edges only, default: 1.0).
+        temperature: Softmax temperature (distillation edges only, default: 1.0).
 
     Example::
 
@@ -114,6 +115,7 @@ class Graph:
         self.nodes = nodes
         self.edges = edges
         self._targets = {e.target for e in edges}
+        self._distill_counts = Counter(e.target for e in edges if e.source is not None)
 
     def __iter__(self):
         return iter(self.nodes)
@@ -150,6 +152,8 @@ class Graph:
         losses: list[torch.Tensor | None] = [None] * len(self.nodes)
         for edge in self.edges:
             edge_loss = edge.compute(outputs, label)
+            if edge.source is not None:
+                edge_loss = edge_loss / self._distill_counts[edge.target]
             i = edge.target
             losses[i] = edge_loss if losses[i] is None else losses[i] + edge_loss
         return losses
