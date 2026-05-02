@@ -3,15 +3,9 @@ import logging
 
 import optuna
 import torch.nn as nn
-from training_utils import (
-    CIFAR100_NUM_CLASSES,
-    create_cifar100_dataloaders,
-    create_grad_scaler,
-    create_model,
-    create_optimizer,
-    create_scheduler,
-    get_device,
-)
+from training_utils import (CIFAR100_NUM_CLASSES, create_cifar100_dataloaders,
+                            create_grad_scaler, create_model, create_optimizer,
+                            create_scheduler, get_device)
 
 from dml import Callback, Edge, EpochState, Graph, Node, Trainer
 from dml.utils import accuracy, set_seed
@@ -23,23 +17,27 @@ def build_graph(trial, args, device):
 
     model = create_model(args.model, device, CIFAR100_NUM_CLASSES)
     optimizer = create_optimizer(model, lr=args.lr, wd=args.wd)
-    nodes.append(Node(
-        model=model,
-        optimizer=optimizer,
-        scheduler=create_scheduler(optimizer, max_epoch=args.epochs),
-        scaler=create_grad_scaler(device),
-    ))
+    nodes.append(
+        Node(
+            model=model,
+            optimizer=optimizer,
+            scheduler=create_scheduler(optimizer, max_epoch=args.epochs),
+            scaler=create_grad_scaler(device),
+        )
+    )
 
     for i in range(1, num_nodes):
         model_name = trial.suggest_categorical(f"model_{i}", args.models)
         model = create_model(model_name, device, CIFAR100_NUM_CLASSES)
         optimizer = create_optimizer(model, lr=args.lr, wd=args.wd)
-        nodes.append(Node(
-            model=model,
-            optimizer=optimizer,
-            scheduler=create_scheduler(optimizer, max_epoch=args.epochs),
-            scaler=create_grad_scaler(device),
-        ))
+        nodes.append(
+            Node(
+                model=model,
+                optimizer=optimizer,
+                scheduler=create_scheduler(optimizer, max_epoch=args.epochs),
+                scaler=create_grad_scaler(device),
+            )
+        )
 
     edges = []
     for i in range(num_nodes):
@@ -51,7 +49,11 @@ def build_graph(trial, args, device):
             if src == tgt:
                 continue
             if trial.suggest_categorical(f"peer_{src}_{tgt}", [True, False]):
-                edges.append(Edge(src, tgt, nn.KLDivLoss(reduction="batchmean"), args.temperature))
+                edges.append(
+                    Edge(
+                        src, tgt, nn.KLDivLoss(reduction="batchmean"), args.temperature
+                    )
+                )
 
     if not any(e.target == 0 for e in edges):
         raise optuna.TrialPruned()
@@ -67,17 +69,27 @@ def main():
     parser.add_argument("--lr", default=0.1, type=float)
     parser.add_argument("--wd", default=5e-4, type=float)
     parser.add_argument("--temperature", default=1.0, type=float)
-    parser.add_argument("--models", default=["resnet32", "resnet110", "wideresnet28_2"], nargs="+", type=str, help="Model pool for extra nodes")
+    parser.add_argument(
+        "--models",
+        default=["resnet32", "resnet110", "wideresnet28_2"],
+        nargs="+",
+        type=str,
+        help="Model pool for extra nodes",
+    )
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--batch-size", default=64, type=int)
     parser.add_argument("--epochs", default=50, type=int, help="Epochs per trial")
-    parser.add_argument("--trials", default=1500, type=int, help="Number of Optuna trials")
+    parser.add_argument(
+        "--trials", default=1500, type=int, help="Number of Optuna trials"
+    )
     parser.add_argument("--study-name", default="dml_search", type=str)
     parser.add_argument("--storage", default="sqlite:///optuna.db", type=str)
 
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 
     set_seed(args.seed)
@@ -90,13 +102,17 @@ def main():
 
     def objective(trial):
         graph = build_graph(trial, args, device)
+        num_nodes = len(graph)
         best = 0.0
+        best_scores = [0.0] * num_nodes
 
         class PruningCallback(Callback):
             def on_epoch_end(self, _, state: EpochState):
-                nonlocal best
+                nonlocal best, best_scores
                 score = state.val_scores[0]
                 best = max(best, score)
+                for i, s in enumerate(state.val_scores):
+                    best_scores[i] = max(best_scores[i], s)
                 trial.report(score, state.epoch)
                 if trial.should_prune():
                     raise optuna.TrialPruned()
@@ -104,9 +120,14 @@ def main():
         Trainer(
             session=graph,
             device=device,
-            score_fn=lambda output, target: accuracy(output, target, topk=(1,))[0].item(),
+            score_fn=lambda output, target: accuracy(output, target, topk=(1,))[
+                0
+            ].item(),
             callbacks=[PruningCallback()],
         ).fit(train_loader, val_loader, epochs=args.epochs)
+
+        for i, s in enumerate(best_scores):
+            trial.set_user_attr(f"best_acc_{i}", s)
 
         return best
 
