@@ -46,12 +46,12 @@ def main():
     save_dir = f"checkpoint/independent/{args.model}"
     os.makedirs(save_dir, exist_ok=True)
 
-    session = Graph(
+    graph = Graph(
         [Node(model=model, optimizer=optimizer, scheduler=scheduler, scaler=scaler)],
         [Edge(None, 0, nn.CrossEntropyLoss())],
     )
     Trainer(
-        session=session,
+        graph=graph,
         device=device,
         score_fn=lambda output, target: accuracy(output, target, topk=(1,))[0].item(),
         callbacks=[

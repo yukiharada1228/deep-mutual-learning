@@ -1,5 +1,6 @@
 import argparse
 import logging
+import os
 
 import optuna
 import torch.nn as nn
@@ -13,31 +14,11 @@ from dml.utils import accuracy, set_seed
 
 def build_graph(trial, args, device):
     num_nodes = trial.suggest_int("num_nodes", 1, 1 + len(args.models))
-    nodes = []
 
-    model = create_model(args.model, device, CIFAR100_NUM_CLASSES)
-    optimizer = create_optimizer(model, lr=args.lr, wd=args.wd)
-    nodes.append(
-        Node(
-            model=model,
-            optimizer=optimizer,
-            scheduler=create_scheduler(optimizer, max_epoch=args.epochs),
-            scaler=create_grad_scaler(device),
-        )
-    )
-
-    for i in range(1, num_nodes):
-        model_name = trial.suggest_categorical(f"model_{i}", args.models)
-        model = create_model(model_name, device, CIFAR100_NUM_CLASSES)
-        optimizer = create_optimizer(model, lr=args.lr, wd=args.wd)
-        nodes.append(
-            Node(
-                model=model,
-                optimizer=optimizer,
-                scheduler=create_scheduler(optimizer, max_epoch=args.epochs),
-                scaler=create_grad_scaler(device),
-            )
-        )
+    model_names = [args.model] + [
+        trial.suggest_categorical(f"model_{i}", args.models)
+        for i in range(1, num_nodes)
+    ]
 
     edges = []
     for i in range(num_nodes):
@@ -54,6 +35,23 @@ def build_graph(trial, args, device):
                         src, tgt, nn.KLDivLoss(reduction="batchmean"), args.temperature
                     )
                 )
+
+    nodes = []
+    for model_name in model_names:
+        model = create_model(model_name, device, CIFAR100_NUM_CLASSES)
+        optimizer = create_optimizer(model, lr=args.lr, wd=args.wd)
+        ckpt_path = os.path.join(
+            "checkpoint", "independent", model_name, "latest_checkpoint.pth"
+        )
+        nodes.append(
+            Node(
+                model=model,
+                optimizer=optimizer,
+                scheduler=create_scheduler(optimizer, max_epoch=args.epochs),
+                scaler=create_grad_scaler(device),
+                checkpoint_path=ckpt_path,
+            )
+        )
 
     if not any(e.target == 0 for e in edges):
         raise optuna.TrialPruned()
@@ -118,7 +116,7 @@ def main():
                     raise optuna.TrialPruned()
 
         Trainer(
-            session=graph,
+            graph=graph,
             device=device,
             score_fn=lambda output, target: accuracy(output, target, topk=(1,))[
                 0

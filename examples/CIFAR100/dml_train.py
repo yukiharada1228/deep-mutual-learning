@@ -83,7 +83,7 @@ def main():
         )
         save_dirs.append(save_dir)
 
-    session = Graph(
+    graph = Graph(
         nodes,
         [
             *[Edge(None, i, nn.CrossEntropyLoss()) for i in range(num_nodes)],
@@ -96,7 +96,7 @@ def main():
         ],
     )
     Trainer(
-        session=session,
+        graph=graph,
         device=device,
         score_fn=lambda output, target: accuracy(output, target, topk=(1,))[0].item(),
         callbacks=[

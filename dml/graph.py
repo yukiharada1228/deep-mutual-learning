@@ -7,6 +7,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .utils.checkpoint import load_checkpoint
+
 
 class Edge:
     """
@@ -89,6 +91,7 @@ class Node:
     optimizer: torch.optim.Optimizer | None = None
     scheduler: torch.optim.lr_scheduler.LRScheduler | None = None
     scaler: torch.amp.GradScaler | None = None
+    checkpoint_path: str | None = None
 
     @property
     def lr(self) -> float:
@@ -116,6 +119,9 @@ class Graph:
         self.edges = edges
         self._targets = {e.target for e in edges}
         self._distill_counts = Counter(e.target for e in edges if e.source is not None)
+        for i, node in enumerate(self.nodes):
+            if node.checkpoint_path is not None and self.is_teacher(i):
+                load_checkpoint(node.model, node.checkpoint_path)
 
     def __iter__(self):
         return iter(self.nodes)

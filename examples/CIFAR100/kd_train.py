@@ -2,7 +2,6 @@ import argparse
 import logging
 import os
 
-import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from training_utils import (CIFAR100_NUM_CLASSES, create_cifar100_dataloaders,
@@ -32,13 +31,6 @@ def main():
         help="Frozen teacher model name(s)",
     )
     parser.add_argument(
-        "--teacher-checkpoints",
-        default=[],
-        nargs="+",
-        type=str,
-        help="Checkpoint paths for each teacher (must match --teachers length)",
-    )
-    parser.add_argument(
         "--students",
         default=["resnet32"],
         nargs="+",
@@ -47,11 +39,6 @@ def main():
     )
 
     args = parser.parse_args()
-
-    if args.teacher_checkpoints and len(args.teacher_checkpoints) != len(args.teachers):
-        raise ValueError(
-            "--teacher-checkpoints must have the same length as --teachers"
-        )
 
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
@@ -68,10 +55,10 @@ def main():
     teacher_nodes, teacher_writers = [], []
     for i, name in enumerate(args.teachers):
         model = create_model(name, device, CIFAR100_NUM_CLASSES)
-        if args.teacher_checkpoints:
-            ckpt = torch.load(args.teacher_checkpoints[i], map_location=device)
-            model.load_state_dict(ckpt.get("model_state_dict", ckpt))
-        teacher_nodes.append(Node(model=model))
+        ckpt_path = os.path.join(
+            "checkpoint", "independent", name, "latest_checkpoint.pth"
+        )
+        teacher_nodes.append(Node(model=model, checkpoint_path=ckpt_path))
         teacher_writers.append(
             SummaryWriter(f"runs/kd_t{args.temperature:.1f}/teacher_{i}_{name}")
         )
@@ -96,7 +83,7 @@ def main():
     teacher_idx = range(len(teacher_nodes))
     student_idx = range(len(teacher_nodes), len(nodes))
 
-    session = Graph(
+    graph = Graph(
         nodes,
         [
             *[Edge(None, s, nn.CrossEntropyLoss()) for s in student_idx],
@@ -108,7 +95,7 @@ def main():
         ],
     )
     Trainer(
-        session=session,
+        graph=graph,
         device=device,
         score_fn=lambda output, target: accuracy(output, target, topk=(1,))[0].item(),
         callbacks=[
