@@ -52,16 +52,13 @@ def main():
         seed=args.seed,
     )
 
-    teacher_nodes, teacher_writers = [], []
-    for i, name in enumerate(args.teachers):
+    teacher_nodes = []
+    for name in args.teachers:
         model = create_model(name, device, CIFAR100_NUM_CLASSES)
         ckpt_path = os.path.join(
             "checkpoint", "independent", name, "latest_checkpoint.pth"
         )
         teacher_nodes.append(Node(model=model, checkpoint_path=ckpt_path))
-        teacher_writers.append(
-            SummaryWriter(f"runs/kd_t{args.temperature:.1f}/teacher_{i}_{name}")
-        )
 
     student_nodes, student_writers, student_save_dirs = [], [], []
     for i, name in enumerate(args.students):
@@ -79,9 +76,9 @@ def main():
         )
         student_save_dirs.append(save_dir)
 
-    nodes = teacher_nodes + student_nodes
-    teacher_idx = range(len(teacher_nodes))
-    student_idx = range(len(teacher_nodes), len(nodes))
+    nodes = student_nodes + teacher_nodes
+    student_idx = range(len(student_nodes))
+    teacher_idx = range(len(student_nodes), len(nodes))
 
     graph = Graph(
         nodes,
@@ -99,8 +96,8 @@ def main():
         device=device,
         score_fn=lambda output, target: accuracy(output, target, topk=(1,))[0].item(),
         callbacks=[
-            TensorBoardCallback(teacher_writers + student_writers),
-            CheckpointCallback([None] * len(teacher_nodes) + student_save_dirs),
+            TensorBoardCallback(student_writers + [None] * len(teacher_nodes)),
+            CheckpointCallback(student_save_dirs + [None] * len(teacher_nodes)),
         ],
     ).fit(train_dataloader, val_dataloader, epochs=args.epochs)
 

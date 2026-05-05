@@ -31,6 +31,8 @@ class TensorBoardCallback(Callback):
 
     def on_epoch_end(self, session, state: EpochState):
         for model_id, writer in enumerate(self.writers):
+            if writer is None:
+                continue
             writer.add_scalar("train_lr", state.learning_rates[model_id], state.epoch)
             writer.add_scalar("train_loss", state.train_losses[model_id], state.epoch)
             writer.add_scalar("train_score", state.train_scores[model_id], state.epoch)
