@@ -3,14 +3,14 @@ import logging
 import os
 
 import torch.nn as nn
-from torch.utils.tensorboard import SummaryWriter
-from training_utils import (CIFAR100_NUM_CLASSES, create_cifar100_dataloaders,
-                            create_grad_scaler, create_model, create_optimizer,
-                            create_scheduler, get_device)
-
 from dml import (CheckpointCallback, Edge, Graph, Node, TensorBoardCallback,
                  Trainer)
 from dml.utils import accuracy, set_seed
+from torch.utils.tensorboard import SummaryWriter
+
+from training_utils import (CIFAR100_NUM_CLASSES, create_cifar100_dataloaders,
+                            create_grad_scaler, create_model, create_optimizer,
+                            create_scheduler, get_device)
 
 
 def main():

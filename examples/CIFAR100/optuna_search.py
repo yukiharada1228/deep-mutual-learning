@@ -4,16 +4,17 @@ import os
 
 import optuna
 import torch.nn as nn
+from dml import Callback, Edge, EpochState, Graph, Node, Trainer
+from dml.utils import accuracy, set_seed
+
 from training_utils import (CIFAR100_NUM_CLASSES, create_cifar100_dataloaders,
                             create_grad_scaler, create_model, create_optimizer,
                             create_scheduler, get_device)
 
-from dml import Callback, Edge, EpochState, Graph, Node, Trainer
-from dml.utils import accuracy, set_seed
-
 
 def build_graph(trial, args, device):
-    num_nodes = trial.suggest_int("num_nodes", 1, 1 + len(args.models))
+    num_nodes = args.num_nodes
+    trial.set_user_attr("num_nodes", num_nodes)
 
     model_names = [args.model] + [
         trial.suggest_categorical(f"model_{i}", args.models)
@@ -79,6 +80,12 @@ def main():
     parser.add_argument("--epochs", default=50, type=int, help="Epochs per trial")
     parser.add_argument(
         "--trials", default=1500, type=int, help="Number of Optuna trials"
+    )
+    parser.add_argument(
+        "--num-nodes",
+        default=2,
+        type=int,
+        help="Total number of nodes including target node (default: 2)",
     )
     parser.add_argument("--study-name", default="dml_search", type=str)
     parser.add_argument("--storage", default="sqlite:///optuna.db", type=str)
