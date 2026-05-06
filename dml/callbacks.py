@@ -40,6 +40,8 @@ class TensorBoardCallback(Callback):
 
     def on_train_end(self, session):
         for writer in self.writers:
+            if writer is None:
+                continue
             writer.close()
 
 
