@@ -77,13 +77,13 @@ def main():
     )
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--batch-size", default=64, type=int)
-    parser.add_argument("--epochs", default=50, type=int, help="Epochs per trial")
+    parser.add_argument("--epochs", default=200, type=int, help="Epochs per trial")
     parser.add_argument(
         "--trials", default=1500, type=int, help="Number of Optuna trials"
     )
     parser.add_argument(
         "--num-nodes",
-        default=2,
+        default=7,
         type=int,
         help="Total number of nodes including target node (default: 2)",
     )
