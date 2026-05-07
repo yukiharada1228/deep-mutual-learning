@@ -8,15 +8,15 @@ Base models trained individually without any knowledge transfer.
 
 ```
 python independent_train.py --model resnet32
-python independent_train.py --model wideresnet28_2
 python independent_train.py --model resnet110
+python independent_train.py --model wideresnet28_2
 ```
 
 | Model | Test Accuracy |
 |-------|--------------|
 | ResNet32 | **71.54%** |
-| WideResNet28-2 | **75.43%** |
 | ResNet110 | **73.65%** |
+| WideResNet28-2 | **75.43%** |
 
 ## 2. Knowledge Distillation (KD)
 
