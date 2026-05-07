@@ -1,4 +1,5 @@
 data
+!optuna_journal.log
 
 *.svg
 *.pdf

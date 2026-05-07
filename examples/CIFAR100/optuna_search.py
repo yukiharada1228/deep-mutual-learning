@@ -3,6 +3,7 @@ import logging
 import os
 
 import optuna
+from optuna.storages.journal import JournalFileBackend, JournalStorage
 import torch.nn as nn
 from dml import Callback, Edge, EpochState, Graph, Node, Trainer
 from dml.utils import accuracy, set_seed
@@ -88,7 +89,7 @@ def main():
         help="Total number of nodes including target node (default: 2)",
     )
     parser.add_argument("--study-name", default="dml_search", type=str)
-    parser.add_argument("--storage", default="sqlite:///optuna.db", type=str)
+    parser.add_argument("--storage", default="optuna_journal.log", type=str)
 
     args = parser.parse_args()
 
@@ -138,12 +139,13 @@ def main():
 
     study = optuna.create_study(
         study_name=args.study_name,
-        storage=args.storage,
+        storage=JournalStorage(JournalFileBackend(args.storage)),
         direction="maximize",
         sampler=optuna.samplers.TPESampler(multivariate=True),
         pruner=optuna.pruners.HyperbandPruner(min_resource=5, max_resource=args.epochs),
         load_if_exists=True,
     )
+    study.set_user_attr("main_model", args.model)
     study.optimize(objective, n_trials=args.trials)
 
     print(f"\nBest trial: #{study.best_trial.number}")
