@@ -84,7 +84,7 @@ def main():
     )
     parser.add_argument(
         "--num-nodes",
-        default=7,
+        default=3,
         type=int,
         help="Total number of nodes including target node (default: 2)",
     )
