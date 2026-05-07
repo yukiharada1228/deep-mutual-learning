@@ -3,14 +3,14 @@ import logging
 import os
 
 import optuna
-from optuna.storages.journal import JournalFileBackend, JournalStorage
 import torch.nn as nn
-from dml import Callback, Edge, EpochState, Graph, Node, Trainer
-from dml.utils import accuracy, set_seed
-
+from optuna.storages.journal import JournalFileBackend, JournalStorage
 from training_utils import (CIFAR100_NUM_CLASSES, create_cifar100_dataloaders,
                             create_grad_scaler, create_model, create_optimizer,
                             create_scheduler, get_device)
+
+from dml import Callback, Edge, EpochState, Graph, Node, Trainer
+from dml.utils import accuracy, set_seed
 
 
 def build_graph(trial, args, device):

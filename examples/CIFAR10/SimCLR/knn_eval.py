@@ -51,7 +51,9 @@ def _knn_classifier(
         weights = distances.clone().div_(temperature).exp_()
         one_hot = torch.zeros(batch_size * k, num_classes, device=train_features.device)
         one_hot.scatter_(1, retrieved.view(-1, 1), 1)
-        probs = (one_hot.view(batch_size, k, num_classes) * weights.unsqueeze(-1)).sum(1)
+        probs = (one_hot.view(batch_size, k, num_classes) * weights.unsqueeze(-1)).sum(
+            1
+        )
 
         _, predictions = probs.topk(5, largest=True, sorted=True)
         targets_exp = targets.view(-1, 1)
@@ -95,6 +97,11 @@ def evaluate_knn(
         test_labels = test_labels.to(device)
 
     return _knn_classifier(
-        train_features, train_labels, test_features, test_labels,
-        k, temperature, num_classes,
+        train_features,
+        train_labels,
+        test_features,
+        test_labels,
+        k,
+        temperature,
+        num_classes,
     )

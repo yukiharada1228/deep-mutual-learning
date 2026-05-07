@@ -61,10 +61,14 @@ class LARS(optim.Optimizer):
                 grad = param.grad
 
                 if group["weight_decay"] != 0:
-                    if not group["weight_decay_filter"] or not self._is_bias_or_norm(param):
+                    if not group["weight_decay_filter"] or not self._is_bias_or_norm(
+                        param
+                    ):
                         grad = grad.add(param, alpha=group["weight_decay"])
 
-                if not group["lars_adaptation_filter"] or not self._is_bias_or_norm(param):
+                if not group["lars_adaptation_filter"] or not self._is_bias_or_norm(
+                    param
+                ):
                     param_norm = torch.norm(param)
                     grad_norm = torch.norm(grad)
                     trust_ratio = torch.where(

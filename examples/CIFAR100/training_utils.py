@@ -1,10 +1,10 @@
 import torch
 import torchvision
-from dml.utils import WorkerInitializer
+from models import cifar_models
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
-from models import cifar_models
+from dml.utils import WorkerInitializer
 
 CIFAR100_NUM_CLASSES = 100
 CIFAR100_MEAN = (0.5071, 0.4867, 0.4408)

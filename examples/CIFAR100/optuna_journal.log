@@ -285,3 +285,4 @@
 {"op_code":7,"worker_id":"c75db078-3936-454c-a880-b3f16cdb5ac0-128651487961088","trial_id":1,"step":125,"intermediate_value":46.74}
 {"op_code":7,"worker_id":"c1b07365-2e73-4846-bfff-1f5efc7aa03a-132700680994816","trial_id":0,"step":130,"intermediate_value":60.58}
 {"op_code":7,"worker_id":"c75db078-3936-454c-a880-b3f16cdb5ac0-128651487961088","trial_id":1,"step":126,"intermediate_value":55.84}
+{"op_code":7,"worker_id":"c1b07365-2e73-4846-bfff-1f5efc7aa03a-132700680994816","trial_id":0,"step":131,"intermediate_value":60.99}
