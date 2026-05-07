@@ -2,37 +2,30 @@ import argparse
 import logging
 import os
 
-from dml import CheckpointCallback
-from dml.utils import load_checkpoint, set_seed
 from losses import DisCOLoss, SimCLRLoss
 from torch.utils.tensorboard import SummaryWriter
+from training_utils import (CIFAR10_NUM_CLASSES, DisCOEdge, SimCLREdge,
+                            SimCLRGraph, SimCLRNode, SimCLRTensorBoardCallback,
+                            SimCLRTrainer, create_grad_scaler,
+                            create_knn_dataloaders, create_optimizer,
+                            create_scheduler, create_simclr_model,
+                            create_simclr_train_dataloader, get_device)
 
-from training_utils import (
-    CIFAR10_NUM_CLASSES,
-    DisCOEdge,
-    SimCLREdge,
-    SimCLRGraph,
-    SimCLRNode,
-    SimCLRTensorBoardCallback,
-    SimCLRTrainer,
-    create_grad_scaler,
-    create_knn_dataloaders,
-    create_optimizer,
-    create_scheduler,
-    create_simclr_model,
-    create_simclr_train_dataloader,
-    get_device,
-)
+from dml import CheckpointCallback
+from dml.utils import load_checkpoint, set_seed
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SimCLR + DisCO (Teacher-Student) on CIFAR-10")
+    parser = argparse.ArgumentParser(
+        description="SimCLR + DisCO (Teacher-Student) on CIFAR-10"
+    )
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--lr", default=1.0, type=float)
     parser.add_argument("--batch-size", default=512, type=int)
     parser.add_argument("--epochs", default=1000, type=int)
     parser.add_argument("--warmup-epochs", default=10, type=int)
     parser.add_argument("--projection-dim", default=128, type=int)
+    parser.add_argument("--num-proj-layers", default=2, type=int)
     parser.add_argument("--momentum", default=0.9, type=float)
     parser.add_argument("--wd", default=1e-6, type=float)
     parser.add_argument("--temperature", default=0.5, type=float)
@@ -63,13 +56,19 @@ def main():
     )
     knn_train_dataloader, knn_test_dataloader = create_knn_dataloaders()
 
-    teacher = create_simclr_model(args.teacher_model, device, args.projection_dim)
+    teacher = create_simclr_model(
+        args.teacher_model, device, args.projection_dim, args.num_proj_layers
+    )
     load_checkpoint(teacher, args.teacher_checkpoint)
 
-    student = create_simclr_model(args.student_model, device, args.projection_dim)
+    student = create_simclr_model(
+        args.student_model, device, args.projection_dim, args.num_proj_layers
+    )
     optimizer = create_optimizer(student, args.lr, args.wd, args.momentum)
     num_steps = len(train_dataloader) * args.epochs
-    scheduler = create_scheduler(optimizer, num_steps, len(train_dataloader) * args.warmup_epochs)
+    scheduler = create_scheduler(
+        optimizer, num_steps, len(train_dataloader) * args.warmup_epochs
+    )
     scaler = create_grad_scaler(device)
 
     save_dir = f"checkpoint/disco/{args.student_model}_distill_{args.teacher_model}"
@@ -77,11 +76,19 @@ def main():
 
     graph = SimCLRGraph(
         [
-            SimCLRNode(model=teacher),  # node 0: teacher (no incoming edges → eval/frozen)
-            SimCLRNode(model=student, optimizer=optimizer, scheduler=scheduler, scaler=scaler),
+            SimCLRNode(
+                model=teacher
+            ),  # node 0: teacher (no incoming edges → eval/frozen)
+            SimCLRNode(
+                model=student, optimizer=optimizer, scheduler=scheduler, scaler=scaler
+            ),
         ],
         [
-            SimCLREdge(None, 1, SimCLRLoss(batch_size=args.batch_size, temperature=args.temperature)),
+            SimCLREdge(
+                None,
+                1,
+                SimCLRLoss(batch_size=args.batch_size, temperature=args.temperature),
+            ),
             DisCOEdge(0, 1, DisCOLoss(), weight=args.weight_disco),
         ],
     )
@@ -95,10 +102,14 @@ def main():
         num_classes=CIFAR10_NUM_CLASSES,
         knn_eval_freq=args.knn_eval_freq,
         callbacks=[
-            SimCLRTensorBoardCallback([
-                None,
-                SummaryWriter(f"runs/disco/{args.student_model}_distill_{args.teacher_model}"),
-            ]),
+            SimCLRTensorBoardCallback(
+                [
+                    None,
+                    SummaryWriter(
+                        f"runs/disco/{args.student_model}_distill_{args.teacher_model}"
+                    ),
+                ]
+            ),
             CheckpointCallback([None, save_dir]),
         ],
     ).fit(train_dataloader, epochs=args.epochs)

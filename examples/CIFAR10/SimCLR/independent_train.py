@@ -2,30 +2,23 @@ import argparse
 import logging
 import os
 
-from dml import CheckpointCallback
-from dml.utils import set_seed
 from losses import SimCLRLoss
 from torch.utils.tensorboard import SummaryWriter
+from training_utils import (CIFAR10_NUM_CLASSES, SimCLREdge, SimCLRGraph,
+                            SimCLRNode, SimCLRTensorBoardCallback,
+                            SimCLRTrainer, create_grad_scaler,
+                            create_knn_dataloaders, create_optimizer,
+                            create_scheduler, create_simclr_model,
+                            create_simclr_train_dataloader, get_device)
 
-from training_utils import (
-    CIFAR10_NUM_CLASSES,
-    SimCLREdge,
-    SimCLRGraph,
-    SimCLRNode,
-    SimCLRTensorBoardCallback,
-    SimCLRTrainer,
-    create_grad_scaler,
-    create_knn_dataloaders,
-    create_optimizer,
-    create_scheduler,
-    create_simclr_model,
-    create_simclr_train_dataloader,
-    get_device,
-)
+from dml import CheckpointCallback
+from dml.utils import set_seed
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SimCLR Independent Training on CIFAR-10")
+    parser = argparse.ArgumentParser(
+        description="SimCLR Independent Training on CIFAR-10"
+    )
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--lr", default=1.0, type=float)
     parser.add_argument("--batch-size", default=512, type=int)
@@ -33,6 +26,7 @@ def main():
     parser.add_argument("--warmup-epochs", default=10, type=int)
     parser.add_argument("--model", default="resnet50", type=str)
     parser.add_argument("--projection-dim", default=128, type=int)
+    parser.add_argument("--num-proj-layers", default=2, type=int)
     parser.add_argument("--momentum", default=0.9, type=float)
     parser.add_argument("--wd", default=1e-6, type=float)
     parser.add_argument("--temperature", default=0.5, type=float)
@@ -59,18 +53,32 @@ def main():
     )
     knn_train_dataloader, knn_test_dataloader = create_knn_dataloaders()
 
-    model = create_simclr_model(args.model, device, args.projection_dim)
+    model = create_simclr_model(
+        args.model, device, args.projection_dim, args.num_proj_layers
+    )
     optimizer = create_optimizer(model, args.lr, args.wd, args.momentum)
     num_steps = len(train_dataloader) * args.epochs
-    scheduler = create_scheduler(optimizer, num_steps, len(train_dataloader) * args.warmup_epochs)
+    scheduler = create_scheduler(
+        optimizer, num_steps, len(train_dataloader) * args.warmup_epochs
+    )
     scaler = create_grad_scaler(device)
 
     save_dir = f"checkpoint/independent/{args.model}"
     os.makedirs(save_dir, exist_ok=True)
 
     graph = SimCLRGraph(
-        [SimCLRNode(model=model, optimizer=optimizer, scheduler=scheduler, scaler=scaler)],
-        [SimCLREdge(None, 0, SimCLRLoss(batch_size=args.batch_size, temperature=args.temperature))],
+        [
+            SimCLRNode(
+                model=model, optimizer=optimizer, scheduler=scheduler, scaler=scaler
+            )
+        ],
+        [
+            SimCLREdge(
+                None,
+                0,
+                SimCLRLoss(batch_size=args.batch_size, temperature=args.temperature),
+            )
+        ],
     )
     SimCLRTrainer(
         graph=graph,
@@ -82,7 +90,9 @@ def main():
         num_classes=CIFAR10_NUM_CLASSES,
         knn_eval_freq=args.knn_eval_freq,
         callbacks=[
-            SimCLRTensorBoardCallback([SummaryWriter(f"runs/independent/{args.model}")]),
+            SimCLRTensorBoardCallback(
+                [SummaryWriter(f"runs/independent/{args.model}")]
+            ),
             CheckpointCallback([save_dir]),
         ],
     ).fit(train_dataloader, epochs=args.epochs)

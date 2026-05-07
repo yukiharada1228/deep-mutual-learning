@@ -4,23 +4,18 @@ import time
 import torch
 import torchvision
 from cosine_warmup import get_cosine_schedule_with_warmup
-from dml import (
-    Callback,
-    CheckpointCallback,
-    EpochState,
-    TensorBoardCallback,
-    Trainer,
-)
-from dml.graph import Edge, Graph, Node
-from dml.utils import AverageMeter, WorkerInitializer
-from torch.utils.data import DataLoader
-from torchvision import transforms
-
 from knn_eval import evaluate_knn
 from lars import LARS
 from models import cifar_models
 from models.simclr_model import SimCLR
+from torch.utils.data import DataLoader
+from torchvision import transforms
 from transform import SimCLRTransforms
+
+from dml import (Callback, CheckpointCallback, EpochState, TensorBoardCallback,
+                 Trainer)
+from dml.graph import Edge, Graph, Node
+from dml.utils import AverageMeter, WorkerInitializer
 
 CIFAR10_NUM_CLASSES = 10
 DEFAULT_NUM_WORKERS = 10
@@ -75,16 +70,23 @@ def create_knn_dataloaders(
 ) -> tuple[DataLoader, DataLoader]:
     transform = transforms.Compose([transforms.ToTensor()])
     knn_kwargs = dict(
-        batch_size=256, shuffle=False, num_workers=num_workers,
-        pin_memory=True, drop_last=False,
+        batch_size=256,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
+        drop_last=False,
     )
     return (
         DataLoader(
-            torchvision.datasets.CIFAR10(root=data_root, train=True, download=True, transform=transform),
+            torchvision.datasets.CIFAR10(
+                root=data_root, train=True, download=True, transform=transform
+            ),
             **knn_kwargs,
         ),
         DataLoader(
-            torchvision.datasets.CIFAR10(root=data_root, train=False, download=True, transform=transform),
+            torchvision.datasets.CIFAR10(
+                root=data_root, train=False, download=True, transform=transform
+            ),
             **knn_kwargs,
         ),
     )
@@ -97,10 +99,12 @@ def create_simclr_model(
     model_name: str,
     device: torch.device,
     projection_dim: int = 128,
+    num_proj_layers: int = 2,
 ) -> SimCLR:
     return SimCLR(
         lambda: getattr(cifar_models, model_name)(CIFAR10_NUM_CLASSES),
         out_dim=projection_dim,
+        num_proj_layers=num_proj_layers,
     ).to(device)
 
 
@@ -142,7 +146,9 @@ def create_grad_scaler(device: torch.device) -> torch.amp.GradScaler:
 class SimCLRNode(Node):
     """Node that handles SimCLR's two-view forward pass."""
 
-    def forward(self, views: list[torch.Tensor], device_type: str) -> list[torch.Tensor]:
+    def forward(
+        self, views: list[torch.Tensor], device_type: str
+    ) -> list[torch.Tensor]:
         with torch.amp.autocast(device_type=device_type):
             return self.model(views[0], views[1])
 
@@ -218,7 +224,9 @@ class SimCLRTrainer(Trainer):
         self.num_classes = num_classes
         self.knn_eval_freq = knn_eval_freq
 
-    def fit(self, train_dataloader: DataLoader, val_dataloader=None, epochs: int = 1000) -> None:
+    def fit(
+        self, train_dataloader: DataLoader, val_dataloader=None, epochs: int = 1000
+    ) -> None:
         device_type = self.device.type
 
         for callback in self.callbacks:
@@ -241,7 +249,9 @@ class SimCLRTrainer(Trainer):
 
                 for model_id, loss in enumerate(losses):
                     if loss is not None:
-                        train_loss_meters[model_id].update(loss.item(), views[0].size(0))
+                        train_loss_meters[model_id].update(
+                            loss.item(), views[0].size(0)
+                        )
 
             train_losses = [m.avg for m in train_loss_meters]
             learning_rates = [node.lr for node in self.graph]
@@ -250,11 +260,15 @@ class SimCLRTrainer(Trainer):
                 if not self.graph.is_teacher(model_id):
                     logger.info(
                         "  Model %d: loss=%.4f, lr=%.6f",
-                        model_id, train_losses[model_id], learning_rates[model_id],
+                        model_id,
+                        train_losses[model_id],
+                        learning_rates[model_id],
                     )
 
             knn_scores = [0.0] * len(self.graph)
-            if self.knn_eval_freq > 0 and (epoch % self.knn_eval_freq == 0 or epoch == epochs):
+            if self.knn_eval_freq > 0 and (
+                epoch % self.knn_eval_freq == 0 or epoch == epochs
+            ):
                 self.graph.eval_all()
                 for model_id, node in enumerate(self.graph):
                     if self.graph.is_teacher(model_id):
@@ -269,7 +283,9 @@ class SimCLRTrainer(Trainer):
                         num_classes=self.num_classes,
                     )
                     knn_scores[model_id] = results["top1"]
-                    logger.info("  Model %d KNN: top1=%.2f%%", model_id, results["top1"])
+                    logger.info(
+                        "  Model %d KNN: top1=%.2f%%", model_id, results["top1"]
+                    )
 
             state = EpochState(
                 epoch=epoch,
