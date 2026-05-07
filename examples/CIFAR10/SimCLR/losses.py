@@ -51,19 +51,16 @@ class SimCLRLoss(nn.Module):
 
         return mask
 
-    def forward(self, target_outputs: tuple, labels=None) -> torch.Tensor:
+    def forward(self, z1: torch.Tensor, z2: torch.Tensor) -> torch.Tensor:
         """Compute NT-Xent loss.
 
         Args:
-            target_outputs: Tuple of (z1, z2) where z1 and z2 are projected
-                representations from two augmented views.
-            labels: Ignored. Present for API compatibility with supervised losses.
+            z1: Projected representations from view 1, shape (batch_size, out_dim).
+            z2: Projected representations from view 2, shape (batch_size, out_dim).
 
         Returns:
             Scalar loss value.
         """
-        # Extract embeddings from both views (via edge self-loop in graph)
-        z1, z2 = target_outputs[0], target_outputs[1]
 
         # Compute similarities between all samples
         # Concatenate outputs from both views into a single tensor
@@ -114,22 +111,28 @@ class DisCOLoss(nn.Module):
         # Loss function
         self.criterion = nn.MSELoss()
 
-    def forward(self, target_output, source_output):
+    def forward(
+        self,
+        z1_student: torch.Tensor,
+        z2_student: torch.Tensor,
+        z1_teacher: torch.Tensor,
+        z2_teacher: torch.Tensor,
+    ) -> torch.Tensor:
         """Compute DisCO distillation loss.
 
         Args:
-            target_output: Tuple of (z1_target, z2_target) from target model.
-            source_output: Tuple of (z1_source, z2_source) from source model.
+            z1_student: Projected features from student view 1.
+            z2_student: Projected features from student view 2.
+            z1_teacher: Projected features from teacher view 1.
+            z2_teacher: Projected features from teacher view 2.
 
         Returns:
-            MSE loss between target and source feature vectors.
+            MSE loss between student and teacher feature vectors.
         """
-        # Feature vectors from target model
-        z1_m1 = target_output[0]
-        z2_m1 = target_output[1]
-        # Feature vectors from source model
-        z1_m2 = source_output[0].detach()
-        z2_m2 = source_output[1].detach()
+        z1_m1 = z1_student
+        z2_m1 = z2_student
+        z1_m2 = z1_teacher.detach()
+        z2_m2 = z2_teacher.detach()
 
         # Knowledge transfer based on DisCO: difference in features for same samples
         # Concatenate outputs -> [batch*2, dimension]
