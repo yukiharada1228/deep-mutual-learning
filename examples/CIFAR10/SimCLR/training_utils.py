@@ -3,13 +3,13 @@ import time
 
 import torch
 import torchvision
+from cosine_warmup import get_cosine_schedule_with_warmup
 from dml import (
     Callback,
     CheckpointCallback,
     EpochState,
     TensorBoardCallback,
     Trainer,
-    get_cosine_schedule_with_warmup,
 )
 from dml.graph import Edge, Graph, Node
 from dml.utils import AverageMeter, WorkerInitializer
