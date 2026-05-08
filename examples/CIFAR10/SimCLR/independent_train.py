@@ -2,17 +2,17 @@ import argparse
 import logging
 import os
 
-from losses import SimCLRLoss
+from dml import CheckpointCallback
+from dml.utils import set_seed
 from torch.utils.tensorboard import SummaryWriter
+
+from losses import SimCLRLoss
 from training_utils import (CIFAR10_NUM_CLASSES, SimCLREdge, SimCLRGraph,
                             SimCLRNode, SimCLRTensorBoardCallback,
                             SimCLRTrainer, create_grad_scaler,
                             create_knn_dataloaders, create_optimizer,
                             create_scheduler, create_simclr_model,
                             create_simclr_train_dataloader, get_device)
-
-from dml import CheckpointCallback
-from dml.utils import set_seed
 
 
 def main():

@@ -3,19 +3,19 @@ import time
 
 import torch
 import torchvision
+from dml import (Callback, CheckpointCallback, EpochState, TensorBoardCallback,
+                 Trainer)
+from dml.graph import Edge, Graph, Node
+from dml.utils import AverageMeter, WorkerInitializer
+from torch.utils.data import DataLoader
+from torchvision import transforms
+
 from cosine_warmup import get_cosine_schedule_with_warmup
 from knn_eval import evaluate_knn
 from lars import LARS
 from models import cifar_models
 from models.simclr_model import SimCLR
-from torch.utils.data import DataLoader
-from torchvision import transforms
 from transform import SimCLRTransforms
-
-from dml import (Callback, CheckpointCallback, EpochState, TensorBoardCallback,
-                 Trainer)
-from dml.graph import Edge, Graph, Node
-from dml.utils import AverageMeter, WorkerInitializer
 
 CIFAR10_NUM_CLASSES = 10
 DEFAULT_NUM_WORKERS = 10
