@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -10,21 +11,35 @@ import torch.nn.functional as F
 from .utils.checkpoint import load_checkpoint
 
 
+def _detach(x: Any) -> Any:
+    """Recursively detach tensors (handles lists/tuples of tensors too)."""
+    if isinstance(x, torch.Tensor):
+        return x.detach()
+    if isinstance(x, (list, tuple)):
+        return type(x)(_detach(v) for v in x)
+    return x
+
+
 class Edge:
     """
     A directed edge in the learning graph.
 
     ``source=None`` denotes a **supervision edge** (ŷ → target): the criterion is
-    applied directly to the node's output and the ground-truth label.
+    applied directly to the node's output and the ground-truth label from the batch.
 
-    ``source=<int>`` denotes a **distillation edge** (source → target): the criterion
-    receives temperature-scaled log-softmax / softmax of the two nodes' outputs.
+    ``source=<int>`` denotes a **distillation edge** (source → target).
+    When ``temperature`` is set, the edge applies temperature-scaled
+    log-softmax / softmax preprocessing before passing to the criterion
+    (standard KD).  When ``temperature`` is ``None``, the raw outputs are
+    forwarded to the criterion as-is (for contrastive / arbitrary distillation).
 
     Args:
         source:      Index of the source node, or ``None`` for a supervision edge.
         target:      Index of the target node.
         criterion:   Loss function for this edge.
-        temperature: Softmax temperature (distillation edges only, default: 1.0).
+        temperature: Softmax temperature for distillation edges.
+                     ``None`` (default) disables preprocessing.
+        weight:      Scalar multiplier for the loss (default: 1.0).
 
     Example::
 
@@ -34,8 +49,8 @@ class Edge:
             [
                 Edge(None, 0, nn.CrossEntropyLoss()),
                 Edge(None, 1, nn.CrossEntropyLoss()),
-                Edge(0, 1, nn.KLDivLoss(reduction="batchmean")),
-                Edge(1, 0, nn.KLDivLoss(reduction="batchmean")),
+                Edge(0, 1, nn.KLDivLoss(reduction="batchmean"), temperature=1.0),
+                Edge(1, 0, nn.KLDivLoss(reduction="batchmean"), temperature=1.0),
             ],
         )
 
@@ -48,16 +63,18 @@ class Edge:
             ],
         )
 
-        # hybrid: node 0 teacher, nodes 1 and 2 do mutual learning
+        # SimCLR: self-supervised contrastive learning
         graph = Graph(
-            nodes,
+            [SimCLRNode(model=model, optimizer=optimizer, ...)],
+            [Edge(None, 0, SimCLRLoss(batch_size=512, temperature=0.5))],
+        )
+
+        # DisCO: contrastive distillation (no temperature preprocessing)
+        graph = Graph(
+            [SimCLRNode(model=teacher), SimCLRNode(model=student, ...)],
             [
-                Edge(None, 1, nn.CrossEntropyLoss()),
-                Edge(None, 2, nn.CrossEntropyLoss()),
-                Edge(0, 1, nn.KLDivLoss(reduction="batchmean"), temperature=4.0),
-                Edge(0, 2, nn.KLDivLoss(reduction="batchmean"), temperature=4.0),
-                Edge(1, 2, nn.KLDivLoss(reduction="batchmean")),
-                Edge(2, 1, nn.KLDivLoss(reduction="batchmean")),
+                Edge(None, 1, SimCLRLoss(...)),
+                Edge(0, 1, DisCOLoss(), weight=0.5),
             ],
         )
     """
@@ -67,22 +84,30 @@ class Edge:
         source: int | None,
         target: int,
         criterion: nn.Module,
-        temperature: float = 1.0,
+        temperature: float | None = None,
+        weight: float = 1.0,
     ):
         self.source = source
         self.target = target
         self.criterion = criterion
         self.temperature = temperature
+        self.weight = weight
 
-    def compute(self, outputs: list[torch.Tensor], label: torch.Tensor) -> torch.Tensor:
+    def compute(self, outputs: list, batch: dict) -> torch.Tensor:
         if self.source is None:
-            return self.criterion(outputs[self.target], label)
-
-        T = self.temperature
-        return self.criterion(
-            F.log_softmax(outputs[self.target] / T, dim=-1),
-            F.softmax(outputs[self.source].detach() / T, dim=-1),
-        ) * (T**2)
+            # Supervision edge
+            loss = self.criterion(outputs[self.target], batch.get("label"))
+        elif self.temperature is not None:
+            # Classification-style distillation with temperature scaling
+            T = self.temperature
+            loss = self.criterion(
+                F.log_softmax(outputs[self.target] / T, dim=-1),
+                F.softmax(_detach(outputs[self.source]) / T, dim=-1),
+            ) * (T**2)
+        else:
+            # Generic distillation — criterion handles everything
+            loss = self.criterion(outputs[self.target], _detach(outputs[self.source]))
+        return self.weight * loss
 
 
 @dataclass(eq=False)
@@ -92,6 +117,8 @@ class Node:
     scheduler: torch.optim.lr_scheduler.LRScheduler | None = None
     scaler: torch.amp.GradScaler | None = None
     checkpoint_path: str | None = None
+    eval_fn: Any | None = None  # (model, device) → float
+    scheduler_interval: str = "epoch"  # "epoch" or "step"
 
     @property
     def lr(self) -> float:
@@ -99,9 +126,9 @@ class Node:
             return 0.0
         return self.optimizer.param_groups[0]["lr"]
 
-    def forward(self, image: torch.Tensor, device_type: str) -> torch.Tensor:
+    def forward(self, batch: dict, device_type: str) -> Any:
         with torch.amp.autocast(device_type=device_type):
-            return self.model(image)
+            return self.model(batch["image"])
 
     def optimize(self, loss: torch.Tensor):
         self.optimizer.zero_grad()
@@ -110,7 +137,8 @@ class Node:
         self.scaler.update()
 
     def step_scheduler(self):
-        self.scheduler.step()
+        if self.scheduler:
+            self.scheduler.step()
 
 
 class Graph:
@@ -140,24 +168,24 @@ class Graph:
         for node in self.nodes:
             node.model.eval()
 
-    def forward_all(self, image: torch.Tensor, device_type: str) -> list[torch.Tensor]:
+    def forward_all(self, batch: dict, device_type: str) -> list:
         outputs = []
         for i, node in enumerate(self.nodes):
             if self.is_teacher(i):
                 with torch.no_grad():
-                    outputs.append(node.forward(image, device_type))
+                    outputs.append(node.forward(batch, device_type))
             else:
-                outputs.append(node.forward(image, device_type))
+                outputs.append(node.forward(batch, device_type))
         return outputs
 
     def compute_losses(
         self,
-        outputs: list[torch.Tensor],
-        label: torch.Tensor,
+        outputs: list,
+        batch: dict,
     ) -> list[torch.Tensor | None]:
         losses: list[torch.Tensor | None] = [None] * len(self.nodes)
         for edge in self.edges:
-            edge_loss = edge.compute(outputs, label)
+            edge_loss = edge.compute(outputs, batch)
             if edge.source is not None:
                 edge_loss = edge_loss / self._distill_counts[edge.target]
             i = edge.target
@@ -169,7 +197,11 @@ class Graph:
             if loss is not None:
                 node.optimize(loss)
 
-    def step_schedulers(self):
+    def step_schedulers(self, interval: str):
         for i, node in enumerate(self.nodes):
-            if not self.is_teacher(i) and node.scheduler is not None:
+            if (
+                not self.is_teacher(i)
+                and node.scheduler is not None
+                and node.scheduler_interval == interval
+            ):
                 node.step_scheduler()

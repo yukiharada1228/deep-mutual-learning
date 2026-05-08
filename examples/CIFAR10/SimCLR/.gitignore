@@ -1,5 +1,6 @@
 data
 !optuna_journal.log
+checkpoint/independent/resnet50/
 
 *.svg
 *.pdf

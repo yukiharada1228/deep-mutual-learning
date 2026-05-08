@@ -2,17 +2,17 @@ import argparse
 import logging
 import os
 
-from dml import CheckpointCallback
-from dml.utils import load_checkpoint, set_seed
+from knn_eval import create_knn_evaluator
+from losses import DisCOLoss, NTXentLoss
 from torch.utils.tensorboard import SummaryWriter
-
-from losses import DisCOLoss, SimCLRLoss
-from training_utils import (CIFAR10_NUM_CLASSES, DisCOEdge, SimCLREdge,
-                            SimCLRGraph, SimCLRNode, SimCLRTensorBoardCallback,
-                            SimCLRTrainer, create_grad_scaler,
+from training_utils import (CIFAR10_NUM_CLASSES, ContrastiveNode,
+                            contrastive_collate, create_grad_scaler,
                             create_knn_dataloaders, create_optimizer,
                             create_scheduler, create_simclr_model,
                             create_simclr_train_dataloader, get_device)
+
+from dml import CheckpointCallback, Edge, Graph, TensorBoardCallback, Trainer
+from dml.utils import load_checkpoint, set_seed
 
 
 def main():
@@ -66,43 +66,48 @@ def main():
     )
     optimizer = create_optimizer(student, args.lr, args.wd, args.momentum)
     num_steps = len(train_dataloader) * args.epochs
-    scheduler = create_scheduler(
-        optimizer, num_steps, len(train_dataloader) * args.warmup_epochs
-    )
+    num_warmup_steps = len(train_dataloader) * args.warmup_epochs
+    scheduler = create_scheduler(optimizer, num_steps, num_warmup_steps)
     scaler = create_grad_scaler(device)
 
     save_dir = f"checkpoint/disco/{args.student_model}_distill_{args.teacher_model}"
     os.makedirs(save_dir, exist_ok=True)
 
-    graph = SimCLRGraph(
+    knn_eval = create_knn_evaluator(
+        knn_train_dataloader,
+        knn_test_dataloader,
+        k=args.knn_k,
+        temperature=args.knn_temperature,
+        num_classes=CIFAR10_NUM_CLASSES,
+        eval_freq=args.knn_eval_freq,
+    )
+
+    graph = Graph(
         [
-            SimCLRNode(
-                model=teacher
-            ),  # node 0: teacher (no incoming edges → eval/frozen)
-            SimCLRNode(
-                model=student, optimizer=optimizer, scheduler=scheduler, scaler=scaler
+            ContrastiveNode(model=teacher),  # node 0: teacher (no eval_fn → skipped)
+            ContrastiveNode(
+                model=student,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=scaler,
+                eval_fn=knn_eval,
             ),
         ],
         [
-            SimCLREdge(
+            Edge(
                 None,
                 1,
-                SimCLRLoss(batch_size=args.batch_size, temperature=args.temperature),
+                NTXentLoss(batch_size=args.batch_size, temperature=args.temperature),
             ),
-            DisCOEdge(0, 1, DisCOLoss(), weight=args.weight_disco),
+            Edge(0, 1, DisCOLoss(), weight=args.weight_disco),
         ],
     )
-    SimCLRTrainer(
+    Trainer(
         graph=graph,
         device=device,
-        knn_train_loader=knn_train_dataloader,
-        knn_test_loader=knn_test_dataloader,
-        knn_k=args.knn_k,
-        knn_temperature=args.knn_temperature,
-        num_classes=CIFAR10_NUM_CLASSES,
-        knn_eval_freq=args.knn_eval_freq,
+        collate_batch=contrastive_collate(device),
         callbacks=[
-            SimCLRTensorBoardCallback(
+            TensorBoardCallback(
                 [
                     None,
                     SummaryWriter(

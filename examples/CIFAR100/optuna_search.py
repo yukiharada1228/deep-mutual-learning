@@ -4,16 +4,16 @@ import os
 
 import optuna
 import torch.nn as nn
+from classification_eval import accuracy, create_classification_evaluator
 from optuna.storages.journal import JournalFileBackend, JournalStorage
 from training_utils import (CIFAR100_NUM_CLASSES, create_cifar100_dataloaders,
-                            create_grad_scaler, create_model, create_optimizer,
-                            create_scheduler, get_device)
+                            create_model, create_optimizer, create_scheduler)
 
 from dml import Callback, Edge, EpochState, Graph, Node, Trainer
-from dml.utils import accuracy, set_seed
+from dml.utils import create_grad_scaler, get_device, set_seed
 
 
-def build_graph(trial, args, device):
+def build_graph(trial, args, device, eval_fn):
     num_nodes = args.num_nodes
     trial.set_user_attr("num_nodes", num_nodes)
 
@@ -34,7 +34,10 @@ def build_graph(trial, args, device):
             if trial.suggest_categorical(f"peer_{src}_{tgt}", [True, False]):
                 edges.append(
                     Edge(
-                        src, tgt, nn.KLDivLoss(reduction="batchmean"), args.temperature
+                        src,
+                        tgt,
+                        nn.KLDivLoss(reduction="batchmean"),
+                        temperature=args.temperature,
                     )
                 )
 
@@ -52,6 +55,7 @@ def build_graph(trial, args, device):
                 scheduler=create_scheduler(optimizer, max_epoch=args.epochs),
                 scaler=create_grad_scaler(device),
                 checkpoint_path=ckpt_path,
+                eval_fn=eval_fn,
             )
         )
 
@@ -106,8 +110,11 @@ def main():
         seed=args.seed,
     )
 
+    score_fn = lambda output, target: accuracy(output, target, topk=(1,))[0].item()
+    eval_fn = create_classification_evaluator(val_loader, score_fn)
+
     def objective(trial):
-        graph = build_graph(trial, args, device)
+        graph = build_graph(trial, args, device, eval_fn)
         num_nodes = len(graph)
         best = 0.0
         best_scores = [0.0] * num_nodes
@@ -126,11 +133,8 @@ def main():
         Trainer(
             graph=graph,
             device=device,
-            score_fn=lambda output, target: accuracy(output, target, topk=(1,))[
-                0
-            ].item(),
             callbacks=[PruningCallback()],
-        ).fit(train_loader, val_loader, epochs=args.epochs)
+        ).fit(train_loader, epochs=args.epochs)
 
         for i, s in enumerate(best_scores):
             trial.set_user_attr(f"best_acc_{i}", s)

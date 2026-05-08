@@ -3,14 +3,14 @@ import logging
 import os
 
 import torch.nn as nn
+from classification_eval import accuracy, create_classification_evaluator
 from torch.utils.tensorboard import SummaryWriter
 from training_utils import (CIFAR100_NUM_CLASSES, create_cifar100_dataloaders,
-                            create_grad_scaler, create_model, create_optimizer,
-                            create_scheduler, get_device)
+                            create_model, create_optimizer, create_scheduler)
 
 from dml import (CheckpointCallback, Edge, Graph, Node, TensorBoardCallback,
                  Trainer)
-from dml.utils import accuracy, set_seed
+from dml.utils import create_grad_scaler, get_device, set_seed
 
 
 def main():
@@ -52,6 +52,9 @@ def main():
         seed=args.seed,
     )
 
+    score_fn = lambda output, target: accuracy(output, target, topk=(1,))[0].item()
+    eval_fn = create_classification_evaluator(val_dataloader, score_fn)
+
     teacher_nodes = []
     for name in args.teachers:
         model = create_model(name, device, CIFAR100_NUM_CLASSES)
@@ -69,7 +72,13 @@ def main():
         save_dir = f"checkpoint/kd_t{args.temperature:.1f}/{i}_{name}"
         os.makedirs(save_dir, exist_ok=True)
         student_nodes.append(
-            Node(model=model, optimizer=optimizer, scheduler=scheduler, scaler=scaler)
+            Node(
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=scaler,
+                eval_fn=eval_fn,
+            )
         )
         student_writers.append(
             SummaryWriter(f"runs/kd_t{args.temperature:.1f}/{i}_{name}")
@@ -85,7 +94,12 @@ def main():
         [
             *[Edge(None, s, nn.CrossEntropyLoss()) for s in student_idx],
             *[
-                Edge(t, s, nn.KLDivLoss(reduction="batchmean"), args.temperature)
+                Edge(
+                    t,
+                    s,
+                    nn.KLDivLoss(reduction="batchmean"),
+                    temperature=args.temperature,
+                )
                 for t in teacher_idx
                 for s in student_idx
             ],
@@ -94,12 +108,11 @@ def main():
     Trainer(
         graph=graph,
         device=device,
-        score_fn=lambda output, target: accuracy(output, target, topk=(1,))[0].item(),
         callbacks=[
             TensorBoardCallback(student_writers + [None] * len(teacher_nodes)),
             CheckpointCallback(student_save_dirs + [None] * len(teacher_nodes)),
         ],
-    ).fit(train_dataloader, val_dataloader, epochs=args.epochs)
+    ).fit(train_dataloader, epochs=args.epochs)
 
 
 if __name__ == "__main__":

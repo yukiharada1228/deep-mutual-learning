@@ -8,7 +8,6 @@ from .utils import save_checkpoint
 class EpochState:
     epoch: int
     train_losses: list[float]
-    train_scores: list[float]
     val_scores: list[float]
     learning_rates: list[float]
     elapsed_time: float
@@ -35,8 +34,8 @@ class TensorBoardCallback(Callback):
                 continue
             writer.add_scalar("train_lr", state.learning_rates[model_id], state.epoch)
             writer.add_scalar("train_loss", state.train_losses[model_id], state.epoch)
-            writer.add_scalar("train_score", state.train_scores[model_id], state.epoch)
-            writer.add_scalar("test_score", state.val_scores[model_id], state.epoch)
+            if state.val_scores[model_id] > 0:
+                writer.add_scalar("val_score", state.val_scores[model_id], state.epoch)
 
     def on_train_end(self, session):
         for writer in self.writers:

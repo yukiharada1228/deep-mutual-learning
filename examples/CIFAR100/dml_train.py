@@ -3,14 +3,14 @@ import logging
 import os
 
 import torch.nn as nn
+from classification_eval import accuracy, create_classification_evaluator
 from torch.utils.tensorboard import SummaryWriter
 from training_utils import (CIFAR100_NUM_CLASSES, create_cifar100_dataloaders,
-                            create_grad_scaler, create_model, create_optimizer,
-                            create_scheduler, get_device)
+                            create_model, create_optimizer, create_scheduler)
 
 from dml import (CheckpointCallback, Edge, Graph, Node, TensorBoardCallback,
                  Trainer)
-from dml.utils import accuracy, set_seed
+from dml.utils import create_grad_scaler, get_device, set_seed
 
 
 def main():
@@ -63,6 +63,9 @@ def main():
         seed=args.seed,
     )
 
+    score_fn = lambda output, target: accuracy(output, target, topk=(1,))[0].item()
+    eval_fn = create_classification_evaluator(val_dataloader, score_fn)
+
     nodes, writers, save_dirs = [], [], []
     for i, name in enumerate(model_names):
         model = create_model(
@@ -76,7 +79,13 @@ def main():
         os.makedirs(save_dir, exist_ok=True)
 
         nodes.append(
-            Node(model=model, optimizer=optimizer, scheduler=scheduler, scaler=scaler)
+            Node(
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=scaler,
+                eval_fn=eval_fn,
+            )
         )
         writers.append(
             SummaryWriter(f"runs/dml_t{temperature:.1f}_n{num_nodes}/{i}_{name}")
@@ -88,7 +97,12 @@ def main():
         [
             *[Edge(None, i, nn.CrossEntropyLoss()) for i in range(num_nodes)],
             *[
-                Edge(src, tgt, nn.KLDivLoss(reduction="batchmean"), temperature)
+                Edge(
+                    src,
+                    tgt,
+                    nn.KLDivLoss(reduction="batchmean"),
+                    temperature=temperature,
+                )
                 for src in range(num_nodes)
                 for tgt in range(num_nodes)
                 if src != tgt
@@ -98,12 +112,11 @@ def main():
     Trainer(
         graph=graph,
         device=device,
-        score_fn=lambda output, target: accuracy(output, target, topk=(1,))[0].item(),
         callbacks=[
             TensorBoardCallback(writers),
             CheckpointCallback(save_dirs),
         ],
-    ).fit(train_dataloader, val_dataloader, epochs=args.epochs)
+    ).fit(train_dataloader, epochs=args.epochs)
 
 
 if __name__ == "__main__":

@@ -12,14 +12,6 @@ CIFAR100_STD = (0.2675, 0.2565, 0.2761)
 DEFAULT_NUM_WORKERS = 10
 
 
-def get_device() -> torch.device:
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
-
-
 def create_cifar100_dataloaders(
     batch_size: int,
     seed: int,
@@ -103,7 +95,3 @@ def create_scheduler(
         T_max=max_epoch,
         eta_min=0.0,
     )
-
-
-def create_grad_scaler(device: torch.device):
-    return torch.amp.GradScaler(device.type, enabled=(device.type == "cuda"))

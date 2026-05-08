@@ -105,3 +105,47 @@ def evaluate_knn(
         temperature,
         num_classes,
     )
+
+
+def create_knn_evaluator(
+    knn_train_loader: DataLoader,
+    knn_test_loader: DataLoader,
+    k: int = 20,
+    temperature: float = 0.07,
+    num_classes: int = 10,
+    eval_freq: int = 1,
+):
+    """Create a per-node eval_fn for KNN evaluation.
+
+    Returns a callable ``(model, device) → float`` compatible with
+    :attr:`Node.eval_fn <dml.Node.eval_fn>`.
+
+    Args:
+        knn_train_loader: DataLoader for KNN database (training set).
+        knn_test_loader:  DataLoader for query set (test set).
+        k:                Number of nearest neighbours.
+        temperature:      Softmax temperature for weighted voting.
+        num_classes:      Number of target classes.
+        eval_freq:        Evaluate every N epochs (0 to disable).
+    """
+    call_count = [0]
+
+    def evaluate(model, device):
+        call_count[0] += 1
+        epoch = call_count[0]
+
+        if eval_freq <= 0 or epoch % eval_freq != 0:
+            return 0.0
+
+        results = evaluate_knn(
+            model,
+            knn_train_loader,
+            knn_test_loader,
+            device,
+            k=k,
+            temperature=temperature,
+            num_classes=num_classes,
+        )
+        return results["top1"]
+
+    return evaluate

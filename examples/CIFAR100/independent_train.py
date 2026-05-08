@@ -3,14 +3,14 @@ import logging
 import os
 
 import torch.nn as nn
+from classification_eval import accuracy, create_classification_evaluator
 from torch.utils.tensorboard import SummaryWriter
 from training_utils import (CIFAR100_NUM_CLASSES, create_cifar100_dataloaders,
-                            create_grad_scaler, create_model, create_optimizer,
-                            create_scheduler, get_device)
+                            create_model, create_optimizer, create_scheduler)
 
 from dml import (CheckpointCallback, Edge, Graph, Node, TensorBoardCallback,
                  Trainer)
-from dml.utils import accuracy, set_seed
+from dml.utils import create_grad_scaler, get_device, set_seed
 
 
 def main():
@@ -43,22 +43,31 @@ def main():
     scheduler = create_scheduler(optimizer, max_epoch=args.epochs)
     scaler = create_grad_scaler(device)
 
+    score_fn = lambda output, target: accuracy(output, target, topk=(1,))[0].item()
+
     save_dir = f"checkpoint/independent/{args.model}"
     os.makedirs(save_dir, exist_ok=True)
 
     graph = Graph(
-        [Node(model=model, optimizer=optimizer, scheduler=scheduler, scaler=scaler)],
+        [
+            Node(
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=scaler,
+                eval_fn=create_classification_evaluator(val_dataloader, score_fn),
+            )
+        ],
         [Edge(None, 0, nn.CrossEntropyLoss())],
     )
     Trainer(
         graph=graph,
         device=device,
-        score_fn=lambda output, target: accuracy(output, target, topk=(1,))[0].item(),
         callbacks=[
             TensorBoardCallback([SummaryWriter(f"runs/independent/{args.model}")]),
             CheckpointCallback([save_dir]),
         ],
-    ).fit(train_dataloader, val_dataloader, epochs=args.epochs)
+    ).fit(train_dataloader, epochs=args.epochs)
 
 
 if __name__ == "__main__":
