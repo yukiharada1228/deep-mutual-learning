@@ -1,5 +1,5 @@
 data
-checkpoint
+!optuna_journal.log
 
 *.svg
 *.pdf
