@@ -1,5 +1,3 @@
-import logging
-
 import torch
 import torchvision
 from cosine_warmup import get_cosine_schedule_with_warmup
@@ -10,24 +8,10 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from transform import SimCLRTransforms
 
-from dml import Node
-from dml.utils import AverageMeter, WorkerInitializer
+from dml.utils import WorkerInitializer
 
 CIFAR10_NUM_CLASSES = 10
 DEFAULT_NUM_WORKERS = 10
-
-logger = logging.getLogger(__name__)
-
-
-# ── Device ────────────────────────────────────────────────────────────────────
-
-
-def get_device() -> torch.device:
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
 
 
 def prepare_contrastive_batch(device: torch.device):
@@ -145,7 +129,3 @@ def create_scheduler(
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_training_steps,
     )
-
-
-def create_grad_scaler(device: torch.device) -> torch.amp.GradScaler:
-    return torch.amp.GradScaler(device.type, enabled=(device.type == "cuda"))
