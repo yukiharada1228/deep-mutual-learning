@@ -5,13 +5,20 @@ import os
 from knn_eval import create_knn_evaluator
 from losses import DisCOLoss, NTXentLoss
 from torch.utils.tensorboard import SummaryWriter
-from training_utils import (CIFAR10_NUM_CLASSES, ContrastiveNode,
-                            contrastive_collate, create_grad_scaler,
-                            create_knn_dataloaders, create_optimizer,
-                            create_scheduler, create_simclr_model,
-                            create_simclr_train_dataloader, get_device)
+from training_utils import (
+    CIFAR10_NUM_CLASSES,
+    contrastive_model_inputs,
+    create_grad_scaler,
+    create_knn_dataloaders,
+    create_optimizer,
+    create_scheduler,
+    create_simclr_model,
+    create_simclr_train_dataloader,
+    get_device,
+    prepare_contrastive_batch,
+)
 
-from dml import CheckpointCallback, Edge, Graph, TensorBoardCallback, Trainer
+from dml import CheckpointCallback, Edge, Graph, Node, TensorBoardCallback, Trainer
 from dml.utils import load_checkpoint, set_seed
 
 
@@ -84,13 +91,18 @@ def main():
 
     graph = Graph(
         [
-            ContrastiveNode(model=teacher),  # node 0: teacher (no eval_fn → skipped)
-            ContrastiveNode(
+            Node(
+                model=teacher,
+                model_input_fn=contrastive_model_inputs,
+            ),  # node 0: teacher (no eval_fn → skipped)
+            Node(
                 model=student,
                 optimizer=optimizer,
                 scheduler=scheduler,
                 scaler=scaler,
                 eval_fn=knn_eval,
+                scheduler_interval="step",
+                model_input_fn=contrastive_model_inputs,
             ),
         ],
         [
@@ -105,7 +117,7 @@ def main():
     Trainer(
         graph=graph,
         device=device,
-        collate_batch=contrastive_collate(device),
+        prepare_batch=prepare_contrastive_batch(device),
         callbacks=[
             TensorBoardCallback(
                 [

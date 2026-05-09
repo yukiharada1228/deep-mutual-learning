@@ -22,7 +22,7 @@ class Trainer:
     Args:
         graph:         The learning graph.
         device:        Torch device to use.
-        collate_batch: Transforms a raw DataLoader batch into a ``dict``
+        prepare_batch: Transforms a raw DataLoader batch into a ``dict``
                        consumed by ``Node.forward`` and ``Edge.compute``.
                        Default converts ``(image, label)`` →
                        ``{"image": …, "label": …}``.
@@ -33,15 +33,15 @@ class Trainer:
         self,
         graph: Graph,
         device: torch.device,
-        collate_batch: Callable | None = None,
+        prepare_batch: Callable | None = None,
         callbacks: list[Callback] | None = None,
     ):
         self.graph = graph
         self.device = device
-        self.collate_batch = collate_batch or self._default_collate
+        self.prepare_batch = prepare_batch or self._default_prepare_batch
         self.callbacks = callbacks or []
 
-    def _default_collate(self, raw_batch) -> dict:
+    def _default_prepare_batch(self, raw_batch) -> dict:
         image, label = raw_batch
         return {"image": image.to(self.device), "label": label.to(self.device)}
 
@@ -60,7 +60,7 @@ class Trainer:
 
             self.graph.train_all()
             for raw_batch in train_dataloader:
-                batch = self.collate_batch(raw_batch)
+                batch = self.prepare_batch(raw_batch)
                 outputs = self.graph.forward_all(batch, device_type)
                 losses = self.graph.compute_losses(outputs, batch)
                 self.graph.optimize_all(losses)

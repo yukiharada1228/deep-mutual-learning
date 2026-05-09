@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Callable
 
 import torch
 import torch.nn as nn
@@ -18,6 +18,11 @@ def _detach(x: Any) -> Any:
     if isinstance(x, (list, tuple)):
         return type(x)(_detach(v) for v in x)
     return x
+
+
+def default_model_inputs(batch: dict) -> tuple[Any, ...]:
+    """Return the default model inputs for image classification batches."""
+    return (batch["image"],)
 
 
 class Edge:
@@ -65,13 +70,40 @@ class Edge:
 
         # SimCLR: self-supervised contrastive learning
         graph = Graph(
-            [SimCLRNode(model=model, optimizer=optimizer, ...)],
+            [
+                Node(
+                    model=model,
+                    optimizer=optimizer,
+                    scheduler_interval="step",
+                    model_input_fn=lambda batch: (
+                        batch["views"][0],
+                        batch["views"][1],
+                    ),
+                )
+            ],
             [Edge(None, 0, SimCLRLoss(batch_size=512, temperature=0.5))],
         )
 
         # DisCO: contrastive distillation (no temperature preprocessing)
         graph = Graph(
-            [SimCLRNode(model=teacher), SimCLRNode(model=student, ...)],
+            [
+                Node(
+                    model=teacher,
+                    model_input_fn=lambda batch: (
+                        batch["views"][0],
+                        batch["views"][1],
+                    ),
+                ),
+                Node(
+                    model=student,
+                    optimizer=optimizer,
+                    scheduler_interval="step",
+                    model_input_fn=lambda batch: (
+                        batch["views"][0],
+                        batch["views"][1],
+                    ),
+                ),
+            ],
             [
                 Edge(None, 1, SimCLRLoss(...)),
                 Edge(0, 1, DisCOLoss(), weight=0.5),
@@ -119,6 +151,18 @@ class Node:
     checkpoint_path: str | None = None
     eval_fn: Any | None = None  # (model, device) → float
     scheduler_interval: str = "epoch"  # "epoch" or "step"
+    model_input_fn: Callable[[dict], tuple[Any, ...]] = field(
+        default=default_model_inputs
+    )
+
+    def __post_init__(self):
+        if self.scheduler_interval not in ("epoch", "step"):
+            raise ValueError(
+                "scheduler_interval must be either 'epoch' or 'step', "
+                f"got {self.scheduler_interval!r}"
+            )
+        if not callable(self.model_input_fn):
+            raise TypeError("model_input_fn must be callable")
 
     @property
     def lr(self) -> float:
@@ -127,8 +171,9 @@ class Node:
         return self.optimizer.param_groups[0]["lr"]
 
     def forward(self, batch: dict, device_type: str) -> Any:
+        model_args = self.model_input_fn(batch)
         with torch.amp.autocast(device_type=device_type):
-            return self.model(batch["image"])
+            return self.model(*model_args)
 
     def optimize(self, loss: torch.Tensor):
         self.optimizer.zero_grad()

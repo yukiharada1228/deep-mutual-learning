@@ -3,7 +3,6 @@ import logging
 import torch
 import torchvision
 from cosine_warmup import get_cosine_schedule_with_warmup
-from knn_eval import evaluate_knn
 from lars import LARS
 from models import cifar_models
 from models.simclr_model import SimCLR
@@ -31,34 +30,19 @@ def get_device() -> torch.device:
     return torch.device("cpu")
 
 
-from dataclasses import dataclass
+def prepare_contrastive_batch(device: torch.device):
+    """Create a batch preparation function for contrastive learning."""
 
-from dml import Node
-
-
-@dataclass(eq=False)
-class ContrastiveNode(Node):
-    """Node for multi-view contrastive learning (SimCLR, MoCo, BYOL, etc.).
-
-    Expects ``batch["views"]`` to contain a list of augmented views and
-    passes the first two views to the model.
-    """
-
-    scheduler_interval: str = "step"
-
-    def forward(self, batch: dict, device_type: str) -> list[torch.Tensor]:
-        with torch.amp.autocast(device_type=device_type):
-            return self.model(batch["views"][0], batch["views"][1])
-
-
-def contrastive_collate(device: torch.device):
-    """Create a collate function for contrastive learning with two views."""
-
-    def collate(raw_batch) -> dict:
+    def prepare_batch(raw_batch) -> dict:
         images, _ = raw_batch
         return {"views": [v.to(device) for v in images]}
 
-    return collate
+    return prepare_batch
+
+
+def contrastive_model_inputs(batch: dict) -> tuple[torch.Tensor, torch.Tensor]:
+    """Map a contrastive batch to the two model inputs used by SimCLR."""
+    return batch["views"][0], batch["views"][1]
 
 
 # ── Dataloaders ───────────────────────────────────────────────────────────────
