@@ -1,26 +1,30 @@
 # CIFAR-10 SimCLR Experiments
 
-This directory contains experimental results for CIFAR-10 representation learning using SimCLR (Simple Framework for Contrastive Learning of Visual Representations).
-
-## Overview
-
-SimCLR is a self-supervised learning method that learns visual representations by maximizing agreement between differently augmented views of the same image. The learned representations are evaluated using k-Nearest Neighbors (kNN) classification on the test set.
+This directory contains experimental results for SimCLR (A Simple Framework for Contrastive Learning of Visual Representations) on CIFAR-10.
 
 ## 1. Independent Training (Baseline)
 
-Base encoder trained individually without any knowledge transfer using SimCLR.
+Base models trained individually using the NT-Xent loss and LARS optimizer. Evaluation is performed using kNN (k=20).
 
-| Model | KNN Top-1 Accuracy | KNN Top-5 Accuracy |
-|-------|-------------------:|-------------------:|
-| ResNet18 | **89.68%** | **98.88%** |
-| ResNet50 | **91.15%** | **99.09%** |
+```bash
+uv run python independent_train.py --model resnet50
+```
 
-## 2. SimCLR with DisCO (Distillation with Contrastive Learning)
+| Model | kNN Accuracy (Test) |
+|-------|---------------------|
+| ResNet50 | **91.06%** |
 
-Knowledge distillation from ResNet50 (teacher) to ResNet18 (student) using contrastive learning.
+## 2. DisCO (Contrastive Distillation)
 
-| Student Model | Teacher Model | KNN Top-1 Accuracy | KNN Top-5 Accuracy | Improvement vs Baseline |
-|---------------|---------------|-------------------:|-------------------:|------------------------:|
-| ResNet18 | ResNet50 | **90.09%** | **98.82%** | **+0.41%** |
+Teacher-Student distillation for SimCLR using the DisCO loss.
 
-The DisCO approach improves ResNet18's performance from 89.68% (independent) to 90.09% by learning from the ResNet50 teacher model, demonstrating effective knowledge transfer through contrastive distillation.
+```bash
+uv run python disco_train.py --teacher-model resnet50 --student-model resnet18 --teacher-checkpoint checkpoint/independent/resnet50/latest_checkpoint.pth
+```
+
+- **Teacher**: ResNet50 (pre-trained, frozen)
+- **Student**: ResNet18
+
+| Model | kNN Accuracy (Test) |
+|-------|---------------------|
+| ResNet18 (Student) | - |
