@@ -79,8 +79,10 @@ class RSDLoss(nn.Module):
 
     Unlike standard feature-level distillation, this is a "Relation
     Distribution Matching" objective. It does not explicitly use the label
-    structure of positive/negative pairs; instead, it forces the student to
     mimic the teacher's entire similarity ranking/terrain across the batch.
+    Note that this include the positive pairs (two views of the same image),
+    allowing the student to distill the teacher's confidence in matching
+    augmented views.
 
     Technical Notes:
     - Normalizes embeddings to the hypersphere before computing similarity.
@@ -106,6 +108,9 @@ class RSDLoss(nn.Module):
         z = F.normalize(torch.cat([z1, z2], dim=0), dim=1)  # [2N, d]
         sim = torch.matmul(z, z.T) / self.temperature  # [2N, 2N]
 
+        # Mask out diagonal (self-similarity) only.
+        # We keep the positive pair (the other view of the same image) to
+        # capture the teacher's relational confidence for that specific sample.
         mask = ~torch.eye(2 * batch_size, dtype=torch.bool, device=sim.device)
         return sim[mask].view(2 * batch_size, -1)
 
