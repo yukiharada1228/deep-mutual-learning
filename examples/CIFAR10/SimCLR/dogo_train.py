@@ -84,7 +84,7 @@ def main():
     )
     parser.add_argument(
         "--dogo-temperature",
-        default=0.1,
+        default=0.5,
         type=float,
         help="Temperature for DoGoLoss (distillation loss)",
     )

@@ -85,10 +85,10 @@ class DoGoLoss(nn.Module):
     - Scales by T^2 to maintain gradient magnitude consistency.
 
     Args:
-        temperature: Temperature for scaling similarity logits (default: 0.1).
+        temperature: Temperature for scaling similarity logits (default: 0.5).
     """
 
-    def __init__(self, temperature: float = 0.1) -> None:
+    def __init__(self, temperature: float = 0.5) -> None:
         super().__init__()
         self.temperature = temperature
         self.similarity_f = nn.CosineSimilarity(dim=2)
