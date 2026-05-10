@@ -2,7 +2,7 @@
 
 Includes:
 - NTXentLoss: NT-Xent (SimCLR) contrastive loss.
-- CRDLoss: Contrastive Relational Distillation loss that aligns
+- RSDLoss: Relational Similarity Distillation loss that aligns
   batch-wise all-view similarity structures (relation distribution matching)
   between online peer models.
 """
@@ -69,15 +69,15 @@ class NTXentLoss(nn.Module):
         return self.criterion(logits, labels) / self.N
 
 
-class CRDLoss(nn.Module):
-    """Contrastive Relational Distillation (CRD) loss.
+class RSDLoss(nn.Module):
+    """Relational Similarity Distillation (RSD) loss.
 
     This loss distills the pairwise similarity structure (relational structure)
     formed within a contrastive batch. It concatenates two augmented views into
     2N representations and aligns the student's all-view similarity distribution
     with the teacher's via KL divergence.
 
-    Unlike standard contrastive losses (like NT-Xent), this is a "Relation
+    Unlike standard feature-level distillation, this is a "Relation
     Distribution Matching" objective. It does not explicitly use the label
     structure of positive/negative pairs; instead, it forces the student to
     mimic the teacher's entire similarity ranking/terrain across the batch.
@@ -85,7 +85,7 @@ class CRDLoss(nn.Module):
     Technical Notes:
     - Normalizes embeddings to the hypersphere before computing similarity.
     - Uses KL divergence (reduction="batchmean") to match distributions.
-    - Scales by T^2 to maintain gradient magnitude consistency with standard
+    - Scales by T^2 to maintain gradient magnitude consistency with standard 
       distillation literature.
 
     Args:

@@ -1,9 +1,9 @@
-"""SimCLR + Contrastive Relational Distillation (CRD) on CIFAR-10.
+"""SimCLR + Relational Similarity Distillation (RSD) on CIFAR-10.
 
 Two or more models learn collaboratively in a self-supervised setting:
   - Each model is trained with the NT-Xent (SimCLR) self-supervised loss.
   - Each model additionally distills from every peer by aligning their pairwise
-    relational similarity structure via KL divergence (CRD loss).
+    relational similarity structure via KL divergence (RSD loss).
 
 This implements online mutual distillation without a pre-trained teacher.
 """
@@ -20,7 +20,7 @@ from dml import (CheckpointCallback, Edge, Graph, Node, TensorBoardCallback,
 from dml.utils import create_grad_scaler, get_device, set_seed
 
 from .knn_eval import create_knn_evaluator
-from .losses import CRDLoss, NTXentLoss
+from .losses import NTXentLoss, RSDLoss
 from .training_utils import (CIFAR10_NUM_CLASSES, contrastive_model_inputs,
                              create_knn_dataloaders, create_optimizer,
                              create_scheduler, create_simclr_model,
@@ -30,7 +30,7 @@ from .training_utils import (CIFAR10_NUM_CLASSES, contrastive_model_inputs,
 
 def main():
     parser = argparse.ArgumentParser(
-        description="SimCLR + CRD (Online Mutual Relational Distillation) on CIFAR-10"
+        description="SimCLR + RSD (Online Mutual Relational Similarity Distillation) on CIFAR-10"
     )
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument(
@@ -54,7 +54,7 @@ def main():
         default=["resnet50"],
         nargs="+",
         type=str,
-        help="List of model names to train with CRD",
+        help="List of model names to train with RSD",
     )
     parser.add_argument(
         "--num-nodes",
@@ -78,19 +78,19 @@ def main():
         help="Temperature for NTXentLoss (contrastive loss)",
     )
     parser.add_argument(
-        "--crd-temperature",
+        "--rsd-temperature",
         default=0.5,
         type=float,
-        help="Temperature for CRDLoss (distillation loss)",
+        help="Temperature for RSDLoss (distillation loss)",
     )
     parser.add_argument("--color-jitter-strength", default=0.5, type=float)
     parser.add_argument("--use-blur", action="store_true")
     parser.add_argument(
-        "--crd-distill-weight",
+        "--rsd-distill-weight",
         default=1.0,
         type=float,
         help=(
-            "Loss weight for CRD distillation. "
+            "Loss weight for RSD distillation. "
             "This implementation uses reduction='batchmean' and applies T^2 scaling "
             "to ensure gradient magnitude consistency across temperatures."
         ),
@@ -154,7 +154,7 @@ def main():
             eval_freq=args.knn_eval_freq,
         )
 
-        save_dir = f"checkpoint/crd_t{temperature:.1f}_n{num_nodes}/{i}_{name}"
+        save_dir = f"checkpoint/rsd_t{temperature:.1f}_n{num_nodes}/{i}_{name}"
         os.makedirs(save_dir, exist_ok=True)
 
         nodes.append(
@@ -169,7 +169,7 @@ def main():
             )
         )
         writers.append(
-            SummaryWriter(f"runs/crd_t{temperature:.1f}_n{num_nodes}/{i}_{name}")
+            SummaryWriter(f"runs/rsd_t{temperature:.1f}_n{num_nodes}/{i}_{name}")
         )
         save_dirs.append(save_dir)
 
@@ -185,13 +185,13 @@ def main():
                 )
                 for i in range(num_nodes)
             ],
-            # Mutual distillation (CRD) losses — all peer pairs
+            # Mutual distillation (RSD) losses — all peer pairs
             *[
                 Edge(
                     src,
                     tgt,
-                    CRDLoss(temperature=args.crd_temperature),
-                    weight=args.crd_distill_weight,
+                    RSDLoss(temperature=args.rsd_temperature),
+                    weight=args.rsd_distill_weight,
                 )
                 for src in range(num_nodes)
                 for tgt in range(num_nodes)
