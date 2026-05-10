@@ -13,18 +13,3 @@ uv run python independent_train.py --model resnet50
 | Model | kNN Accuracy (Test) |
 |-------|---------------------|
 | ResNet50 | **91.06%** |
-
-## 2. DisCO (Contrastive Distillation)
-
-Teacher-Student distillation for SimCLR using the DisCO loss.
-
-```bash
-uv run python disco_train.py --teacher-model resnet50 --student-model resnet18 --teacher-checkpoint checkpoint/independent/resnet50/latest_checkpoint.pth
-```
-
-- **Teacher**: ResNet50 (pre-trained, frozen)
-- **Student**: ResNet18
-
-| Model | kNN Accuracy (Test) |
-|-------|---------------------|
-| ResNet18 (Student) | - |
