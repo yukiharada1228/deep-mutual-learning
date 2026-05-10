@@ -1,16 +1,11 @@
-"""SimCLR + DoGo (Distill on the Go) on CIFAR-10.
+"""SimCLR + Contrastive Relational Distillation (CRD) on CIFAR-10.
 
 Two or more models learn collaboratively in a self-supervised setting:
   - Each model is trained with the NT-Xent (SimCLR) self-supervised loss.
   - Each model additionally distills from every peer by aligning their pairwise
-    similarity score distributions via KL divergence (DoGo loss).
+    relational similarity structure via KL divergence (CRD loss).
 
 This implements online mutual distillation without a pre-trained teacher.
-
-Reference:
-    Bhat et al. "Distill on the Go: Online knowledge distillation in
-    self-supervised learning." CVPR Workshops 2021.
-    https://arxiv.org/abs/2104.09866
 """
 
 import argparse
@@ -25,7 +20,7 @@ from dml import (CheckpointCallback, Edge, Graph, Node, TensorBoardCallback,
 from dml.utils import create_grad_scaler, get_device, set_seed
 
 from .knn_eval import create_knn_evaluator
-from .losses import DoGoLoss, NTXentLoss
+from .losses import CRDLoss, NTXentLoss
 from .training_utils import (CIFAR10_NUM_CLASSES, contrastive_model_inputs,
                              create_knn_dataloaders, create_optimizer,
                              create_scheduler, create_simclr_model,
@@ -35,31 +30,31 @@ from .training_utils import (CIFAR10_NUM_CLASSES, contrastive_model_inputs,
 
 def main():
     parser = argparse.ArgumentParser(
-        description="SimCLR + DoGo (Online Mutual Distillation) on CIFAR-10"
+        description="SimCLR + CRD (Online Mutual Relational Distillation) on CIFAR-10"
     )
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument(
         "--lr",
         default=3e-4,
         type=float,
-        help="Learning rate (paper uses 3e-4 for Adam)",
+        help="Learning rate (Adam defaults to 3e-4)",
     )
     parser.add_argument(
-        "--batch-size", default=256, type=int, help="Batch size (paper uses 256)"
+        "--batch-size", default=256, type=int, help="Batch size (default: 256)"
     )
     parser.add_argument("--epochs", default=900, type=int)
     parser.add_argument(
         "--warmup-epochs",
         default=0,
         type=int,
-        help="Warmup epochs (paper uses fixed LR)",
+        help="Warmup epochs (default: 0)",
     )
     parser.add_argument(
         "--models",
         default=["resnet50"],
         nargs="+",
         type=str,
-        help="List of model names to train with DoGo",
+        help="List of model names to train with CRD",
     )
     parser.add_argument(
         "--num-nodes",
@@ -74,7 +69,7 @@ def main():
     parser.add_argument(
         "--disable-scheduler",
         action="store_true",
-        help="Disable cosine scheduler (paper uses fixed LR)",
+        help="Disable cosine scheduler",
     )
     parser.add_argument(
         "--temperature",
@@ -83,20 +78,22 @@ def main():
         help="Temperature for NTXentLoss (contrastive loss)",
     )
     parser.add_argument(
-        "--dogo-temperature",
-        default=0.1,
+        "--crd-temperature",
+        default=0.5,
         type=float,
-        help="Temperature for DoGoLoss (distillation loss)",
+        help="Temperature for CRDLoss (distillation loss)",
     )
     parser.add_argument("--color-jitter-strength", default=0.5, type=float)
     parser.add_argument("--use-blur", action="store_true")
     parser.add_argument(
-        "--weight-dogo",
+        "--crd-distill-weight",
         default=1.0,
         type=float,
-        help="Loss weight for DoGo distillation. (Note: Official repo uses 100.0 "
-        "because their KL loss is divided by (2N*2N), while ours uses "
-        "batchmean which divides only by 2N, so 1.0 here is similar to 100+ there.)",
+        help=(
+            "Loss weight for CRD distillation. "
+            "This implementation uses reduction='batchmean' and applies T^2 scaling "
+            "to ensure gradient magnitude consistency across temperatures."
+        ),
     )
     parser.add_argument("--knn-eval-freq", type=int, default=1)
     parser.add_argument("--knn-k", type=int, default=20)
@@ -157,7 +154,7 @@ def main():
             eval_freq=args.knn_eval_freq,
         )
 
-        save_dir = f"checkpoint/dogo_t{temperature:.1f}_n{num_nodes}/{i}_{name}"
+        save_dir = f"checkpoint/crd_t{temperature:.1f}_n{num_nodes}/{i}_{name}"
         os.makedirs(save_dir, exist_ok=True)
 
         nodes.append(
@@ -172,7 +169,7 @@ def main():
             )
         )
         writers.append(
-            SummaryWriter(f"runs/dogo_t{temperature:.1f}_n{num_nodes}/{i}_{name}")
+            SummaryWriter(f"runs/crd_t{temperature:.1f}_n{num_nodes}/{i}_{name}")
         )
         save_dirs.append(save_dir)
 
@@ -188,13 +185,13 @@ def main():
                 )
                 for i in range(num_nodes)
             ],
-            # Mutual distillation (DoGo) losses — all peer pairs
+            # Mutual distillation (CRD) losses — all peer pairs
             *[
                 Edge(
                     src,
                     tgt,
-                    DoGoLoss(temperature=args.dogo_temperature),
-                    weight=args.weight_dogo,
+                    CRDLoss(temperature=args.crd_temperature),
+                    weight=args.crd_distill_weight,
                 )
                 for src in range(num_nodes)
                 for tgt in range(num_nodes)

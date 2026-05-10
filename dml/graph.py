@@ -84,14 +84,14 @@ class Edge:
             [Edge(None, 0, NTXentLoss(batch_size=512, temperature=0.5))],
         )
 
-        # DoGo: online mutual distillation
+        # CRD: online mutual relational distillation
         graph = Graph(
             nodes,
             [
                 Edge(None, 0, NTXentLoss(batch_size=512, temperature=0.5)),
                 Edge(None, 1, NTXentLoss(batch_size=512, temperature=0.5)),
-                Edge(1, 0, DoGoLoss(temperature=0.1), weight=1.0),
-                Edge(0, 1, DoGoLoss(temperature=0.1), weight=1.0),
+                Edge(1, 0, CRDLoss(temperature=0.1), weight=1.0),
+                Edge(0, 1, CRDLoss(temperature=0.1), weight=1.0),
             ],
         )
     """
