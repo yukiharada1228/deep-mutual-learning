@@ -3,14 +3,15 @@ import logging
 import os
 
 import torch.nn as nn
-from classification_eval import accuracy, create_classification_evaluator
 from torch.utils.tensorboard import SummaryWriter
-from training_utils import (CIFAR100_NUM_CLASSES, create_cifar100_dataloaders,
-                            create_model, create_optimizer, create_scheduler)
 
-from dml import (CheckpointCallback, Edge, Graph, Node, TensorBoardCallback,
-                 Trainer)
+from dml import (CheckpointCallback, Edge, Graph, KLLoss, Node,
+                 TensorBoardCallback, Trainer, accuracy,
+                 create_classification_evaluator)
 from dml.utils import create_grad_scaler, get_device, set_seed
+
+from .training_utils import (CIFAR100_NUM_CLASSES, create_cifar100_dataloaders,
+                             create_model, create_optimizer, create_scheduler)
 
 
 def main():
@@ -100,8 +101,7 @@ def main():
                 Edge(
                     src,
                     tgt,
-                    nn.KLDivLoss(reduction="batchmean"),
-                    temperature=temperature,
+                    KLLoss(temperature=temperature),
                 )
                 for src in range(num_nodes)
                 for tgt in range(num_nodes)

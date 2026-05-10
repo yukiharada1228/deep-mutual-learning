@@ -1,8 +1,8 @@
-"""Contrastive loss functions for SimCLR and DisCO.
+"""Contrastive loss functions for SimCLR and DoGo.
 
 Includes:
 - NTXentLoss:  NT-Xent (SimCLR) contrastive loss.
-- DisCOLoss:   DisCO distillation loss for contrastive representations.
+- DoGoLoss:    DoGo online mutual distillation loss for self-supervised learning.
 """
 
 import torch
@@ -62,27 +62,68 @@ class NTXentLoss(nn.Module):
         return self.criterion(logits, labels) / self.N
 
 
-class DisCOLoss(nn.Module):
-    """DisCO distillation loss for contrastive representations.
+class DoGoLoss(nn.Module):
+    """DoGo online mutual distillation loss for self-supervised learning.
 
-    Computes MSE between concatenated feature vectors of student and teacher.
+    Aligns each model's softmax probability distribution over pairwise similarity
+    scores with that of the peer model, via KL divergence.  Both models are trained
+    simultaneously without a pre-trained teacher (online / mutual distillation).
 
-    Accepts ``forward(student_pair, teacher_pair)`` where each is ``[z1, z2]``,
-    as produced by a distillation :class:`Edge`.
+    Accepts ``forward(student_pair, teacher_pair)`` where each argument is
+    ``[z1, z2]`` as produced by a distillation :class:`Edge`.  The ``teacher_pair``
+    tensors are expected to already be detached (the :class:`Edge` handles this).
+
+    Args:
+        temperature: Temperature for scaling similarity logits. The official
+            implementation uses 0.1 for distillation, distinct from the
+            contrastive loss temperature (typically 0.5).
 
     Reference:
-        Gao et al. "DisCo: Remedy Self-supervised Learning on Lightweight
-        Models with Distilled Contrastive Learning." ECCV 2022.
-        https://arxiv.org/abs/2104.09124
+        Bhat et al. "Distill on the Go: Online knowledge distillation in
+        self-supervised learning." CVPR Workshops 2021.
+        https://arxiv.org/abs/2104.09866
     """
 
-    def __init__(self):
+    def __init__(self, temperature: float = 0.1) -> None:
         super().__init__()
-        self.criterion = nn.MSELoss()
+        self.temperature = temperature
+
+    def _similarity_distribution(
+        self, z1: torch.Tensor, z2: torch.Tensor
+    ) -> torch.Tensor:
+        """Compute masked softmax similarity distribution from two views.
+
+        Returns:
+            Tensor of shape [2N, 2N-1] after removing self-similarities.
+        """
+        N = z1.size(0)
+        z = F.normalize(torch.cat([z1, z2], dim=0), dim=1)  # [2N, d]
+        sim = torch.matmul(z, z.T) / self.temperature  # [2N, 2N]
+
+        # Mask out diagonal (self-similarity) → [2N, 2N-1]
+        mask = ~torch.eye(2 * N, dtype=torch.bool, device=sim.device)
+        return sim[mask].view(2 * N, -1)
 
     def forward(self, student_output, teacher_output) -> torch.Tensor:
         s_z1, s_z2 = student_output
-        t_z1, t_z2 = teacher_output
-        fvec_s = torch.cat((s_z1, s_z2), dim=0)
-        fvec_t = torch.cat((t_z1.detach(), t_z2.detach()), dim=0)
-        return self.criterion(fvec_s, fvec_t)
+        t_z1, t_z2 = teacher_output  # expected to be detached by Edge
+
+        sim_s = self._similarity_distribution(s_z1, s_z2)
+        sim_t = self._similarity_distribution(t_z1, t_z2)
+
+        # Note on scaling:
+        # We use reduction="batchmean", which divides the KL divergence
+        # by the number of distributions, i.e. 2N.
+        #
+        # We also multiply by temperature squared (T^2) to maintain the
+        # magnitude of gradients, consistent with standard KD.
+        #
+        # Compared to the official implementation (which uses "mean" reduction
+        # and no T^2 scaling), our loss with weight=1.0 is naturally on a
+        # similar scale to their weight=100.0.
+        loss = F.kl_div(
+            F.log_softmax(sim_s, dim=-1),
+            F.softmax(sim_t, dim=-1),
+            reduction="batchmean",
+        ) * (self.temperature**2)
+        return loss

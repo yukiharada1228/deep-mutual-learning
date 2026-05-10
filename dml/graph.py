@@ -54,8 +54,8 @@ class Edge:
             [
                 Edge(None, 0, nn.CrossEntropyLoss()),
                 Edge(None, 1, nn.CrossEntropyLoss()),
-                Edge(0, 1, nn.KLDivLoss(reduction="batchmean"), temperature=1.0),
-                Edge(1, 0, nn.KLDivLoss(reduction="batchmean"), temperature=1.0),
+                Edge(0, 1, KLLoss(temperature=1.0)),
+                Edge(1, 0, KLLoss(temperature=1.0)),
             ],
         )
 
@@ -64,7 +64,7 @@ class Edge:
             nodes,
             [
                 Edge(None, 1, nn.CrossEntropyLoss()),
-                Edge(0, 1, nn.KLDivLoss(reduction="batchmean"), temperature=4.0),
+                Edge(0, 1, KLLoss(temperature=4.0)),
             ],
         )
 
@@ -84,29 +84,14 @@ class Edge:
             [Edge(None, 0, NTXentLoss(batch_size=512, temperature=0.5))],
         )
 
-        # DisCO: contrastive distillation (no temperature preprocessing)
+        # DoGo: online mutual distillation
         graph = Graph(
+            nodes,
             [
-                Node(
-                    model=teacher,
-                    model_input_fn=lambda batch: (
-                        batch["views"][0],
-                        batch["views"][1],
-                    ),
-                ),
-                Node(
-                    model=student,
-                    optimizer=optimizer,
-                    scheduler_interval="step",
-                    model_input_fn=lambda batch: (
-                        batch["views"][0],
-                        batch["views"][1],
-                    ),
-                ),
-            ],
-            [
+                Edge(None, 0, NTXentLoss(batch_size=512, temperature=0.5)),
                 Edge(None, 1, NTXentLoss(batch_size=512, temperature=0.5)),
-                Edge(0, 1, DisCOLoss(), weight=0.5),
+                Edge(1, 0, DoGoLoss(temperature=0.1), weight=1.0),
+                Edge(0, 1, DoGoLoss(temperature=0.1), weight=1.0),
             ],
         )
     """
@@ -116,28 +101,19 @@ class Edge:
         source: int | None,
         target: int,
         criterion: nn.Module,
-        temperature: float | None = None,
         weight: float = 1.0,
     ):
         self.source = source
         self.target = target
         self.criterion = criterion
-        self.temperature = temperature
         self.weight = weight
 
     def compute(self, outputs: list, batch: dict) -> torch.Tensor:
         if self.source is None:
             # Supervision edge
             loss = self.criterion(outputs[self.target], batch.get("label"))
-        elif self.temperature is not None:
-            # Classification-style distillation with temperature scaling
-            T = self.temperature
-            loss = self.criterion(
-                F.log_softmax(outputs[self.target] / T, dim=-1),
-                F.softmax(_detach(outputs[self.source]) / T, dim=-1),
-            ) * (T**2)
         else:
-            # Generic distillation — criterion handles everything
+            # Distillation edge — criterion handles all preprocessing (e.g. T-scaling)
             loss = self.criterion(outputs[self.target], _detach(outputs[self.source]))
         return self.weight * loss
 
