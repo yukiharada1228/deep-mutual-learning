@@ -1,11 +1,16 @@
-"""SimCLR + Relational Similarity Distillation (RSD) on CIFAR-10.
+"""SimCLR + Distill on the Go (DoGo) on CIFAR-10.
 
 Two or more models learn collaboratively in a self-supervised setting:
   - Each model is trained with the NT-Xent (SimCLR) self-supervised loss.
   - Each model additionally distills from every peer by aligning their pairwise
-    relational similarity structure via KL divergence (RSD loss).
+    cross-view similarity structure via KL divergence (DoGo loss).
 
 This implements online mutual distillation without a pre-trained teacher.
+
+Reference:
+    Bhat et al. "Distill on the Go: Online knowledge distillation in
+    self-supervised learning." CVPR Workshops 2021.
+    https://arxiv.org/abs/2104.09866
 """
 
 import argparse
@@ -20,7 +25,7 @@ from dml import (CheckpointCallback, Edge, Graph, Node, TensorBoardCallback,
 from dml.utils import create_grad_scaler, get_device, set_seed
 
 from .knn_eval import create_knn_evaluator
-from .losses import NTXentLoss, RSDLoss
+from .losses import DoGoLoss, NTXentLoss
 from .training_utils import (CIFAR10_NUM_CLASSES, contrastive_model_inputs,
                              create_knn_dataloaders, create_optimizer,
                              create_scheduler, create_simclr_model,
@@ -30,7 +35,7 @@ from .training_utils import (CIFAR10_NUM_CLASSES, contrastive_model_inputs,
 
 def main():
     parser = argparse.ArgumentParser(
-        description="SimCLR + RSD (Online Mutual Relational Similarity Distillation) on CIFAR-10"
+        description="SimCLR + DoGo (Online Mutual Relational Distillation) on CIFAR-10"
     )
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument(
@@ -54,7 +59,7 @@ def main():
         default=["resnet50"],
         nargs="+",
         type=str,
-        help="List of model names to train with RSD",
+        help="List of model names to train with DoGo",
     )
     parser.add_argument(
         "--num-nodes",
@@ -78,19 +83,19 @@ def main():
         help="Temperature for NTXentLoss (contrastive loss)",
     )
     parser.add_argument(
-        "--rsd-temperature",
-        default=0.5,
+        "--dogo-temperature",
+        default=0.1,
         type=float,
-        help="Temperature for RSDLoss (distillation loss)",
+        help="Temperature for DoGoLoss (distillation loss)",
     )
     parser.add_argument("--color-jitter-strength", default=0.5, type=float)
     parser.add_argument("--use-blur", action="store_true")
     parser.add_argument(
-        "--rsd-distill-weight",
+        "--dogo-distill-weight",
         default=1.0,
         type=float,
         help=(
-            "Loss weight for RSD distillation. "
+            "Loss weight for DoGo distillation. "
             "This implementation uses reduction='batchmean' and applies T^2 scaling "
             "to ensure gradient magnitude consistency across temperatures."
         ),
@@ -154,7 +159,7 @@ def main():
             eval_freq=args.knn_eval_freq,
         )
 
-        save_dir = f"checkpoint/rsd_t{temperature:.1f}_n{num_nodes}/{i}_{name}"
+        save_dir = f"checkpoint/dogo_t{temperature:.1f}_n{num_nodes}/{i}_{name}"
         os.makedirs(save_dir, exist_ok=True)
 
         nodes.append(
@@ -169,7 +174,7 @@ def main():
             )
         )
         writers.append(
-            SummaryWriter(f"runs/rsd_t{temperature:.1f}_n{num_nodes}/{i}_{name}")
+            SummaryWriter(f"runs/dogo_t{temperature:.1f}_n{num_nodes}/{i}_{name}")
         )
         save_dirs.append(save_dir)
 
@@ -185,13 +190,13 @@ def main():
                 )
                 for i in range(num_nodes)
             ],
-            # Mutual distillation (RSD) losses — all peer pairs
+            # Mutual distillation (DoGo) losses — all peer pairs
             *[
                 Edge(
                     src,
                     tgt,
-                    RSDLoss(temperature=args.rsd_temperature),
-                    weight=args.rsd_distill_weight,
+                    DoGoLoss(temperature=args.dogo_temperature),
+                    weight=args.dogo_distill_weight,
                 )
                 for src in range(num_nodes)
                 for tgt in range(num_nodes)

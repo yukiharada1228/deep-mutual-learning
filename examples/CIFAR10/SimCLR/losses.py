@@ -1,10 +1,9 @@
-"""Contrastive loss functions for SimCLR and Relational Distillation.
+"""Contrastive loss functions for SimCLR and DoGo.
 
 Includes:
 - NTXentLoss: NT-Xent (SimCLR) contrastive loss.
-- RSDLoss: Relational Similarity Distillation loss that aligns
-  batch-wise all-view similarity structures (relation distribution matching)
-  between online peer models.
+- DoGoLoss: "Distill on the Go" loss that aligns cross-view similarity
+  distributions between online peer models.
 """
 
 import torch
@@ -64,55 +63,44 @@ class NTXentLoss(nn.Module):
         logits = torch.cat((positive_samples, negative_samples), dim=1)
 
         labels = torch.zeros(self.N, dtype=torch.long, device=z.device)
-        # Note: We do not multiply by T^2 here because NT-Xent is a hard-label
-        # classification task (index 0).
         return self.criterion(logits, labels) / self.N
 
 
-class RSDLoss(nn.Module):
-    """Relational Similarity Distillation (RSD) loss.
+class DoGoLoss(nn.Module):
+    """Distill on the Go (DoGo) loss.
 
-    This loss distills the pairwise similarity structure (relational structure)
-    formed within a contrastive batch. It concatenates two augmented views into
-    2N representations and aligns the student's all-view similarity distribution
-    with the teacher's via KL divergence.
+    This loss distills the cross-view similarity structure formed within a
+    contrastive batch. Given two augmented views (z1, z2), it computes the
+    pairwise similarities between them [N, N] and aligns the student's
+    distribution with the teacher's via KL divergence.
 
-    Unlike standard feature-level distillation, this is a "Relation
-    Distribution Matching" objective. It does not explicitly use the label
-    mimic the teacher's entire similarity ranking/terrain across the batch.
-    Note that this include the positive pairs (two views of the same image),
-    allowing the student to distill the teacher's confidence in matching
-    augmented views.
+    Reference:
+        Bhat et al. "Distill on the Go: Online knowledge distillation in
+        self-supervised learning." CVPR Workshops 2021.
+        https://arxiv.org/abs/2104.09866
 
     Technical Notes:
-    - Normalizes embeddings to the hypersphere before computing similarity.
-    - Uses KL divergence (reduction="batchmean") to match distributions.
-    - Scales by T^2 to maintain gradient magnitude consistency with standard 
-      distillation literature.
+    - Uses nn.CosineSimilarity(dim=2) to match official implementation.
+    - Matches distributions in a single direction (z1->z2).
+    - Scales by T^2 to maintain gradient magnitude consistency.
 
     Args:
-        temperature: Temperature for scaling similarity logits (default: 0.5).
+        temperature: Temperature for scaling similarity logits (default: 0.1).
     """
 
-    def __init__(self, temperature: float = 0.5) -> None:
+    def __init__(self, temperature: float = 0.1) -> None:
         super().__init__()
         self.temperature = temperature
+        self.similarity_f = nn.CosineSimilarity(dim=2)
 
     def _similarity_logits(self, z1: torch.Tensor, z2: torch.Tensor) -> torch.Tensor:
-        """Compute masked pairwise similarity logits from two views.
+        """Compute cross-view similarity logits between two batches.
 
         Returns:
-            Tensor of shape [2N, 2N-1] after removing self-similarities.
+            Tensor of shape [N, N].
         """
-        batch_size = z1.size(0)
-        z = F.normalize(torch.cat([z1, z2], dim=0), dim=1)  # [2N, d]
-        sim = torch.matmul(z, z.T) / self.temperature  # [2N, 2N]
-
-        # Mask out diagonal (self-similarity) only.
-        # We keep the positive pair (the other view of the same image) to
-        # capture the teacher's relational confidence for that specific sample.
-        mask = ~torch.eye(2 * batch_size, dtype=torch.bool, device=sim.device)
-        return sim[mask].view(2 * batch_size, -1)
+        # (N, 1, d) and (1, N, d) -> (N, N)
+        return self.similarity_f(z1.unsqueeze(1), z2.unsqueeze(0)) / self.temperature
 
     def forward(self, student_output, teacher_output) -> torch.Tensor:
         s_z1, s_z2 = student_output
@@ -122,14 +110,14 @@ class RSDLoss(nn.Module):
         t_z1 = t_z1.detach()
         t_z2 = t_z2.detach()
 
+        # Compute cross-view similarity logits [N, N]
+        # We match how view1 relates to all samples in view2.
         sim_s = self._similarity_logits(s_z1, s_z2)
         sim_t = self._similarity_logits(t_z1, t_z2)
 
-        # Align student's similarity distribution with teacher's.
-        loss = F.kl_div(
-            F.log_softmax(sim_s, dim=-1),
-            F.softmax(sim_t, dim=-1),
-            reduction="batchmean",
-        ) * (self.temperature**2)
+        # Distill: z1 -> z2 (row-wise softmax)
+        log_p_s = F.log_softmax(sim_s, dim=1)
+        p_t = F.softmax(sim_t, dim=1)
 
-        return loss
+        # Apply KL divergence and T^2 scaling
+        return F.kl_div(log_p_s, p_t, reduction="batchmean") * (self.temperature**2)
