@@ -81,7 +81,7 @@ class Edge:
                     ),
                 )
             ],
-            [Edge(None, 0, SimCLRLoss(batch_size=512, temperature=0.5))],
+            [Edge(None, 0, NTXentLoss(batch_size=512, temperature=0.5))],
         )
 
         # DisCO: contrastive distillation (no temperature preprocessing)
@@ -105,7 +105,7 @@ class Edge:
                 ),
             ],
             [
-                Edge(None, 1, SimCLRLoss(...)),
+                Edge(None, 1, NTXentLoss(batch_size=512, temperature=0.5)),
                 Edge(0, 1, DisCOLoss(), weight=0.5),
             ],
         )
