@@ -35,19 +35,19 @@ def main():
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument(
         "--lr",
-        default=3e-4,
+        default=1.0,
         type=float,
-        help="Learning rate (Adam defaults to 3e-4)",
+        help="Learning rate (default: 1.0 for LARS)",
     )
     parser.add_argument(
-        "--batch-size", default=256, type=int, help="Batch size (default: 256)"
+        "--batch-size", default=512, type=int, help="Batch size (default: 512)"
     )
     parser.add_argument("--epochs", default=900, type=int)
     parser.add_argument(
         "--warmup-epochs",
-        default=0,
+        default=10,
         type=int,
-        help="Warmup epochs (default: 0)",
+        help="Warmup epochs (default: 10)",
     )
     parser.add_argument(
         "--models",

@@ -1,9 +1,10 @@
-"""Contrastive loss functions for SimCLR and CRD.
+"""Contrastive loss functions for SimCLR and Relational Distillation.
 
 Includes:
 - NTXentLoss: NT-Xent (SimCLR) contrastive loss.
-- CRDLoss: Contrastive relational distillation loss that aligns
-  batch-wise all-view similarity structures between online peer models.
+- CRDLoss: Contrastive Relational Distillation loss that aligns
+  batch-wise all-view similarity structures (relation distribution matching)
+  between online peer models.
 """
 
 import torch
@@ -14,10 +15,8 @@ import torch.nn.functional as F
 class NTXentLoss(nn.Module):
     """NT-Xent loss for contrastive learning (SimCLR).
 
-    Accepts two calling conventions:
-
-    - ``forward([z1, z2], label=None)`` — from a unified :class:`Edge` (supervision edge).
-    - ``forward(z1, z2)`` — direct call.
+    This is the primary self-supervised objective that pulls positive pairs
+    (augmented views of the same image) together and pushes negative pairs apart.
 
     Args:
         batch_size:  Number of samples in a batch.
@@ -65,27 +64,29 @@ class NTXentLoss(nn.Module):
         logits = torch.cat((positive_samples, negative_samples), dim=1)
 
         labels = torch.zeros(self.N, dtype=torch.long, device=z.device)
+        # Note: We do not multiply by T^2 here because NT-Xent is a hard-label
+        # classification task (index 0).
         return self.criterion(logits, labels) / self.N
 
 
 class CRDLoss(nn.Module):
-    """Contrastive relational distillation loss.
+    """Contrastive Relational Distillation (CRD) loss.
 
-    This loss distills the pairwise similarity structure formed within a
-    contrastive batch. Given two augmented views, it concatenates them into
-    2N representations, computes all pairwise similarities except
-    self-similarities, and aligns the student's similarity distribution with
-    the teacher's via KL divergence.
+    This loss distills the pairwise similarity structure (relational structure)
+    formed within a contrastive batch. It concatenates two augmented views into
+    2N representations and aligns the student's all-view similarity distribution
+    with the teacher's via KL divergence.
 
-    Unlike standard feature-level distillation, this loss does not directly
-    force student embeddings to match teacher embeddings. Instead, it transfers
-    the teacher's relational structure: how each view ranks and relates to all
-    other views in the batch.
+    Unlike standard contrastive losses (like NT-Xent), this is a "Relation
+    Distribution Matching" objective. It does not explicitly use the label
+    structure of positive/negative pairs; instead, it forces the student to
+    mimic the teacher's entire similarity ranking/terrain across the batch.
 
-    This is inspired by DoGo-style online distillation, but differs from the
-    official DoGo loss: it distills a SimCLR-style all-view similarity
-    distribution of shape [2N, 2N-1], rather than a cross-view [N, N]
-    similarity matrix.
+    Technical Notes:
+    - Normalizes embeddings to the hypersphere before computing similarity.
+    - Uses KL divergence (reduction="batchmean") to match distributions.
+    - Scales by T^2 to maintain gradient magnitude consistency with standard
+      distillation literature.
 
     Args:
         temperature: Temperature for scaling similarity logits (default: 0.5).
@@ -119,12 +120,7 @@ class CRDLoss(nn.Module):
         sim_s = self._similarity_logits(s_z1, s_z2)
         sim_t = self._similarity_logits(t_z1, t_z2)
 
-        # Note on scaling:
-        # We use reduction="batchmean", which divides the KL divergence
-        # by the number of distributions, i.e. 2N.
-        #
-        # We additionally multiply by T^2, following the standard KD convention.
-        # This keeps the gradient scale less sensitive to the chosen temperature.
+        # Align student's similarity distribution with teacher's.
         loss = F.kl_div(
             F.log_softmax(sim_s, dim=-1),
             F.softmax(sim_t, dim=-1),
