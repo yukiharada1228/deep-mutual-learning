@@ -7,7 +7,7 @@ This directory contains implementations of SimCLR (Self-supervised Learning) and
 Train one or more models independently using the standard NT-Xent loss.
 
 ```bash
-uv run python independent_train.py --model resnet50 --batch-size 512 --lr 1.0
+uv run python independent_train.py --model resnet50 --batch-size 512
 ```
 
 | Model | kNN Accuracy (Test) |
