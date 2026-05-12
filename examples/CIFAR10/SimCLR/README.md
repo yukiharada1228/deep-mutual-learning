@@ -19,7 +19,7 @@ uv run python independent_train.py --model resnet50 --batch-size 512 --lr 1.0
 Two or more models learn collaboratively by aligning their batch-wise cross-view similarity distributions. This is a form of online mutual distillation without a pre-trained teacher.
 
 ```bash
-uv run python dogo_train.py --models resnet50 resnet50 --batch-size 512 --dogo-distill-weight 1.0
+uv run python dogo_train.py --models resnet50 --batch-size 256
 ```
 
 Unlike standard feature-level distillation, DoGo aligns the **cross-view similarity distributions** between the augmented views in each batch. This allows models to share their "view of the world" (how each image in the batch relates to the others) without forcing their absolute feature coordinates to match.
