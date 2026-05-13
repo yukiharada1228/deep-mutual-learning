@@ -2,19 +2,18 @@ import argparse
 import logging
 import os
 
+from knn_eval import create_knn_evaluator
+from losses import NTXentLoss
 from torch.utils.tensorboard import SummaryWriter
+from training_utils import (CIFAR10_NUM_CLASSES, contrastive_model_inputs,
+                            create_knn_dataloaders, create_optimizer,
+                            create_scheduler, create_simclr_model,
+                            create_simclr_train_dataloader,
+                            prepare_contrastive_batch)
 
 from dml import (CheckpointCallback, Edge, Graph, Node, TensorBoardCallback,
                  Trainer)
 from dml.utils import create_grad_scaler, get_device, set_seed
-
-from .knn_eval import create_knn_evaluator
-from .losses import NTXentLoss
-from .training_utils import (CIFAR10_NUM_CLASSES, contrastive_model_inputs,
-                             create_knn_dataloaders, create_optimizer,
-                             create_scheduler, create_simclr_model,
-                             create_simclr_train_dataloader,
-                             prepare_contrastive_batch)
 
 
 def main():

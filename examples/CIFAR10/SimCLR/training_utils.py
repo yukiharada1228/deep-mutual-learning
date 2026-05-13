@@ -1,15 +1,14 @@
 import torch
 import torchvision
+from cosine_warmup import get_cosine_schedule_with_warmup
+from lars import LARS
+from models import cifar_models
+from models.simclr_model import SimCLR
 from torch.utils.data import DataLoader
 from torchvision import transforms
+from transform import SimCLRTransforms
 
 from dml.utils import WorkerInitializer
-
-from .cosine_warmup import get_cosine_schedule_with_warmup
-from .lars import LARS
-from .models import cifar_models
-from .models.simclr_model import SimCLR
-from .transform import SimCLRTransforms
 
 CIFAR10_NUM_CLASSES = 10
 DEFAULT_NUM_WORKERS = 10

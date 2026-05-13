@@ -17,20 +17,18 @@ import argparse
 import logging
 import os
 
-import torch
+from knn_eval import create_knn_evaluator
+from losses import DoGoLoss, NTXentLoss
 from torch.utils.tensorboard import SummaryWriter
+from training_utils import (CIFAR10_NUM_CLASSES, contrastive_model_inputs,
+                            create_knn_dataloaders, create_optimizer,
+                            create_scheduler, create_simclr_model,
+                            create_simclr_train_dataloader,
+                            prepare_contrastive_batch)
 
 from dml import (CheckpointCallback, Edge, Graph, Node, TensorBoardCallback,
                  Trainer)
 from dml.utils import create_grad_scaler, get_device, set_seed
-
-from .knn_eval import create_knn_evaluator
-from .losses import DoGoLoss, NTXentLoss
-from .training_utils import (CIFAR10_NUM_CLASSES, contrastive_model_inputs,
-                             create_knn_dataloaders, create_optimizer,
-                             create_scheduler, create_simclr_model,
-                             create_simclr_train_dataloader,
-                             prepare_contrastive_batch)
 
 
 def main():
@@ -71,11 +69,6 @@ def main():
     parser.add_argument("--num-proj-layers", default=2, type=int)
     parser.add_argument("--momentum", default=0.9, type=float)
     parser.add_argument("--wd", default=1e-6, type=float)
-    parser.add_argument(
-        "--disable-scheduler",
-        action="store_true",
-        help="Disable cosine scheduler",
-    )
     parser.add_argument(
         "--temperature",
         default=0.5,
@@ -142,12 +135,7 @@ def main():
             name, device, args.projection_dim, args.num_proj_layers
         )
         optimizer = create_optimizer(model, args.lr, args.wd, args.momentum)
-        if args.disable_scheduler:
-            scheduler = torch.optim.lr_scheduler.LambdaLR(
-                optimizer, lr_lambda=lambda step: 1.0
-            )
-        else:
-            scheduler = create_scheduler(optimizer, num_steps, num_warmup_steps)
+        scheduler = create_scheduler(optimizer, num_steps, num_warmup_steps)
         scaler = create_grad_scaler(device)
 
         knn_eval = create_knn_evaluator(
@@ -159,7 +147,7 @@ def main():
             eval_freq=args.knn_eval_freq,
         )
 
-        save_dir = f"checkpoint/dogo_t{temperature:.1f}_n{num_nodes}/{i}_{name}"
+        save_dir = f"checkpoint/dogo_t{temperature:.1f}_dt{args.dogo_temperature:.1f}_n{num_nodes}/{i}_{name}"
         os.makedirs(save_dir, exist_ok=True)
 
         nodes.append(
@@ -174,7 +162,9 @@ def main():
             )
         )
         writers.append(
-            SummaryWriter(f"runs/dogo_t{temperature:.1f}_n{num_nodes}/{i}_{name}")
+            SummaryWriter(
+                f"runs/dogo_t{temperature:.1f}_dt{args.dogo_temperature:.1f}_n{num_nodes}/{i}_{name}"
+            )
         )
         save_dirs.append(save_dir)
 
