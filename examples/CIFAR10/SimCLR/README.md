@@ -24,9 +24,10 @@ uv run python dogo_train.py --models resnet50 --batch-size 256
 
 Unlike standard feature-level distillation, DoGo aligns the **cross-view similarity distributions** between the augmented views in each batch. This allows models to share their "view of the world" (how each image in the batch relates to the others) without forcing their absolute feature coordinates to match.
 
-| Model | Setting | kNN Accuracy (Test) |
-|-------|---------|---------------------|
-| ResNet50 | DoGo (Mutual) | - |
+| Model | kNN Accuracy (Test) |
+|-------|---------------------|
+| Node 0 (ResNet50) | **91.86%** |
+| Node 1 (ResNet50) | **91.60%** |
 
 ## Utilities
 
