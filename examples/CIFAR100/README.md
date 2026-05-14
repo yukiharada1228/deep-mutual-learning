@@ -6,10 +6,10 @@ This directory contains experimental results for CIFAR-100 classification using 
 
 Base models trained individually without any knowledge transfer.
 
-```
-python independent_train.py --model resnet32
-python independent_train.py --model resnet110
-python independent_train.py --model wideresnet28_2
+```bash
+uv run python independent_train.py --model resnet32
+uv run python independent_train.py --model resnet110
+uv run python independent_train.py --model wideresnet28_2
 ```
 
 | Model | Test Accuracy |
@@ -22,8 +22,8 @@ python independent_train.py --model wideresnet28_2
 
 Standard Knowledge Distillation (Hinton et al.) with Temperature $T=2.0$.
 
-```
-python kd_train.py --teachers wideresnet28_2 --students resnet32 --temperature 2.0
+```bash
+uv run python kd_train.py --teachers wideresnet28_2 --students resnet32 --temperature 2.0
 ```
 
 - **Teacher**: WideResNet28-2 (pre-trained, frozen)
@@ -39,8 +39,8 @@ python kd_train.py --teachers wideresnet28_2 --students resnet32 --temperature 2
 
 Collaborative learning between two models with Temperature $T=1.0$.
 
-```
-python dml_train.py --models resnet32 --num-nodes 2 --temperature 1.0
+```bash
+uv run python dml_train.py --models resnet32 --num-nodes 2 --temperature 1.0
 ```
 
 - **Node 0**: ResNet32
