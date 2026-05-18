@@ -82,7 +82,6 @@ class DoGoLoss(nn.Module):
     Technical Notes:
     - Uses nn.CosineSimilarity(dim=2) to match official implementation.
     - Matches distributions in a single direction (z1->z2).
-    - Scales by T^2 to maintain gradient magnitude consistency.
 
     Args:
         temperature: Temperature for scaling similarity logits (default: 0.5).
@@ -120,4 +119,4 @@ class DoGoLoss(nn.Module):
         p_t = F.softmax(sim_t, dim=1)
 
         # Apply KL divergence and T^2 scaling
-        return F.kl_div(log_p_s, p_t, reduction="batchmean") * (self.temperature**2)
+        return F.kl_div(log_p_s, p_t, reduction="batchmean")
