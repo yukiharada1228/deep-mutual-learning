@@ -88,9 +88,9 @@ def main():
         default=1.0,
         type=float,
         help=(
-            "Loss weight for DoGo distillation. "
-            "This implementation uses reduction='batchmean' and applies T^2 scaling "
-            "to ensure gradient magnitude consistency across temperatures."
+            "Loss weight for DoGo distillation."
+            "This implementation uses reduction='batchmean'"
+            "to ensure a more natural loss scale."
         ),
     )
     parser.add_argument("--knn-eval-freq", type=int, default=1)
