@@ -26,8 +26,8 @@ Unlike standard feature-level distillation, DoGo aligns the **cross-view similar
 
 | Model | kNN Accuracy (Test) |
 |-------|---------------------|
-| Node 0 (ResNet50) | **91.86%** |
-| Node 1 (ResNet50) | **91.60%** |
+| Node 0 (ResNet50) | **91.61%%** |
+| Node 1 (ResNet50) | **91.91%%** |
 
 ## Utilities
 
